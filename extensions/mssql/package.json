@@ -9,13 +9,14 @@
   "activationEvents": [
     "*"
   ],
-  "main": "./client/out/mssqlMain",
+  "main": "./client/out/main",
   "extensionDependencies": [
     "vscode.sql"
   ],
   "scripts": {
     "compile": "gulp compile-extension:mssql-client",
-    "postinstall": "node ./node_modules/vscode/bin/install"
+    "postinstall": "node ./node_modules/vscode/bin/install",
+		"update-grammar": "node ../../build/npm/update-grammar.js Microsoft/vscode-mssql syntaxes/SQL.plist ./syntaxes/sql.tmLanguage.json"
   },
   "contributes": {
     "languages": [
@@ -26,15 +27,7 @@
         ],
         "aliases": [
           "SQL"
-        ],
-        "configuration": "./syntaxes/sql.configuration.json"
-      }
-    ],
-    "grammars": [
-      {
-        "language": "sql",
-        "scopeName": "source.sql",
-        "path": "./syntaxes/SQL.plist"
+        ]
       }
     ],
     "outputChannels": [
@@ -101,11 +94,105 @@
           "default": false
         }
       }
+    },
+    "dashboard": {
+      "provider": "MSSQL",
+      "flavors": [
+        {
+          "flavor": "on_prem",
+          "condition": {
+            "field": "isCloud",
+            "operator": "!=",
+            "value": true
+          },
+          "databaseProperties": [
+            {
+              "displayName": "Recovery Model",
+              "value": "recoveryModel"
+            },
+            {
+              "displayName": "Last Database Backup",
+              "value": "lastBackupDate",
+              "ignore": [
+                "1/1/0001 12:00:00 AM"
+              ]
+            },
+            {
+              "displayName": "Last Log Backup",
+              "value": "lastLogBackupDate",
+              "ignore": [
+                "1/1/0001 12:00:00 AM"
+              ]
+            },
+            {
+              "displayName": "Compatibility Level",
+              "value": "compatibilityLevel"
+            },
+            {
+              "displayName": "Owner",
+              "value": "owner"
+            }
+          ],
+          "serverProperties": [
+            {
+              "displayName": "Version",
+              "value": "serverVersion"
+            },
+            {
+              "displayName": "Edition",
+              "value": "serverEdition"
+            },
+            {
+              "displayName": "Computer Name",
+              "value": "machineName"
+            },
+            {
+              "displayName": "OS Version",
+              "value": "osVersion"
+            }
+          ]
+        },
+        {
+          "flavor": "cloud",
+          "condition": {
+            "field": "isCloud",
+            "operator": "==",
+            "value": true
+          },
+          "databaseProperties": [
+            {
+              "displayName": "Edition",
+              "value": "azureEdition"
+            },
+            {
+              "displayName": "Pricing Tier",
+              "value": "serviceLevelObjective"
+            },
+            {
+              "displayName": "Compatibility Level",
+              "value": "compatibilityLevel"
+            },
+            {
+              "displayName": "Owner",
+              "value": "owner"
+            }
+          ],
+          "serverProperties": [
+            {
+              "displayName": "Version",
+              "value": "serverVersion"
+            },
+            {
+              "displayName": "Type",
+              "value": "serverEdition"
+            }
+          ]
+        }
+      ]
     }
   },
   "dependencies": {
-    "dataprotocol-client": "file:../../dataprotocol-node/client",
-    "extensions-modules": "file:../../extensions-modules"
+    "dataprotocol-client": "file:../../dataprotocol-node/client"
   },
   "devDependencies": {
     "vscode": "1.0.1"

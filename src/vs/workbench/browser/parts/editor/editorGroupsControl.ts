@@ -20,7 +20,7 @@ import { RunOnceScheduler } from 'vs/base/common/async';
 import { isMacintosh } from 'vs/base/common/platform';
 import { IWorkbenchEditorService } from 'vs/workbench/services/editor/common/editorService';
 import { Position, POSITIONS } from 'vs/platform/editor/common/editor';
-import { IEditorGroupService, ITabOptions, GroupArrangement, GroupOrientation } from 'vs/workbench/services/group/common/groupService';
+import { IEditorGroupService, IEditorTabOptions, GroupArrangement, GroupOrientation } from 'vs/workbench/services/group/common/groupService';
 import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
 import { ServiceCollection } from 'vs/platform/instantiation/common/serviceCollection';
@@ -73,6 +73,7 @@ export interface IEditorGroupsControl {
 	getInstantiationService(position: Position): IInstantiationService;
 	getProgressBar(position: Position): ProgressBar;
 	updateProgress(position: Position, state: ProgressState): void;
+	updateTitleAreas(refreshActive?: boolean): void;
 
 	layout(dimension: Dimension): void;
 	layout(position: Position): void;
@@ -86,6 +87,8 @@ export interface IEditorGroupsControl {
 
 	getRatio(): number[];
 
+	// {{SQL CARBON EDIT}} -- Allow editor titles to be refreshed to support tab coloring
+	refreshTitles(): void;
 
 	dispose(): void;
 }
@@ -115,7 +118,7 @@ export class EditorGroupsControl extends Themable implements IEditorGroupsContro
 
 	private layoutVertically: boolean;
 
-	private tabOptions: ITabOptions;
+	private tabOptions: IEditorTabOptions;
 
 	private silos: Builder[];
 	private silosSize: number[];
@@ -225,7 +228,7 @@ export class EditorGroupsControl extends Themable implements IEditorGroupsContro
 		this.extensionService.onReady().then(() => this.onExtensionsReady());
 	}
 
-	private updateTabOptions(tabOptions: ITabOptions, refresh?: boolean): void {
+	private updateTabOptions(tabOptions: IEditorTabOptions, refresh?: boolean): void {
 		const tabCloseButton = this.tabOptions ? this.tabOptions.tabCloseButton : 'right';
 		this.tabOptions = tabOptions;
 
@@ -443,6 +446,9 @@ export class EditorGroupsControl extends Themable implements IEditorGroupsContro
 
 				// Log this fact in telemetry
 				if (this.telemetryService) {
+					/* __GDPR__
+						"workbenchEditorMaximized" : {}
+					*/
 					this.telemetryService.publicLog('workbenchEditorMaximized');
 				}
 
@@ -2077,6 +2083,32 @@ export class EditorGroupsControl extends Themable implements IEditorGroupsContro
 		return silo ? silo.child().getProperty(key) : void 0;
 	}
 
+	public updateTitleAreas(refreshActive?: boolean): void {
+		POSITIONS.forEach(position => {
+			const group = this.stacks.groupAt(position);
+			if (!group) {
+				return;
+			}
+
+			const titleControl = this.getTitleAreaControl(position);
+			if (!titleControl) {
+				return;
+			}
+
+			// Make sure the active group is shown in the title
+			// and refresh it if we are instructed to refresh it
+			if (refreshActive && group.isActive) {
+				titleControl.setContext(group);
+				titleControl.refresh(true);
+			}
+
+			// Otherwise, just refresh the toolbar
+			else {
+				titleControl.updateEditorActionsToolbar();
+			}
+		});
+	}
+
 	public updateProgress(position: Position, state: ProgressState): void {
 		const progressbar = this.getProgressBar(position);
 		if (!progressbar) {
@@ -2094,6 +2126,14 @@ export class EditorGroupsControl extends Themable implements IEditorGroupsContro
 				progressbar.stop().getContainer().hide();
 				break;
 		}
+	}
+
+	// {{SQL CARBON EDIT}} -- Allow editor titles to be refreshed to support tab coloring
+	public refreshTitles(): void {
+		POSITIONS.forEach(position => {
+			let titleControl = this.getTitleAreaControl(position);
+			titleControl.refresh();
+		});
 	}
 
 	public dispose(): void {

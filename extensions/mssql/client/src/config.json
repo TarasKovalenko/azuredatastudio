@@ -1,7 +1,7 @@
 {
 	"service": {
 		"downloadUrl": "https://github.com/Microsoft/sqltoolsservice/releases/download/v{#version#}/microsoft.sqltools.servicelayer-{#fileName#}",
-		"version": "1.2.0-alpha.37",
+		"version": "1.2.0-alpha.49",
 			"downloadFileNames": {
 			"Windows_86": "win-x86-netcoreapp2.0.zip",
 			"Windows_64": "win-x64-netcoreapp2.0.zip",
@@ -28,7 +28,7 @@
 							"specialValueType": "serverName",
 							"isIdentity": true,
 							"name": "server",
-							"displayName": "Server name",
+							"displayName": "Server",
 							"description": "Name of the SQL Server instance",
 							"groupName": "Source",
 							"valueType": "string",
@@ -42,7 +42,7 @@
 							"specialValueType": "databaseName",
 							"isIdentity": true,
 							"name": "database",
-							"displayName": "Database name",
+							"displayName": "Database",
 							"description": "The name of the initial catalog or database int the data source",
 							"groupName": "Source",
 							"valueType": "string",

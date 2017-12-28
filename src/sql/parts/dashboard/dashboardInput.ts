@@ -76,7 +76,7 @@ export class DashboardInput extends EditorInput {
 	public getResource(): URI {
 		return URI.from({
 			scheme: 'dashboard',
-			path: '.dashboard'
+			path: 'dashboard'
 		});
 	}
 
@@ -166,5 +166,9 @@ export class DashboardInput extends EditorInput {
 			&& profile1.userName === profile2.userName
 			&& profile1.authenticationType === profile2.authenticationType
 			&& profile1.groupFullName === profile2.groupFullName;
+	}
+
+	public get tabColor(): string {
+		return this._connectionService.getTabColorForUri(this.uri);
 	}
 }
