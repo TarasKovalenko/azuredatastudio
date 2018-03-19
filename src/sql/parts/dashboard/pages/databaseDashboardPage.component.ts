@@ -10,6 +10,7 @@ import { BreadcrumbClass } from 'sql/parts/dashboard/services/breadcrumb.service
 import { IBreadcrumbService } from 'sql/base/browser/ui/breadcrumb/interfaces';
 import { DashboardServiceInterface } from 'sql/parts/dashboard/services/dashboardServiceInterface.service';
 import { WidgetConfig } from 'sql/parts/dashboard/common/dashboardWidget';
+import { IBootstrapService, BOOTSTRAP_SERVICE_ID } from 'sql/services/bootstrap/bootstrapService';
 
 import * as colors from 'vs/platform/theme/common/colorRegistry';
 import * as nls from 'vs/nls';
@@ -43,10 +44,10 @@ export class DatabaseDashboardPage extends DashboardPage implements OnInit {
 			this.refresh(true);
 			this._cd.detectChanges();
 		}));
-		this.init();
 	}
 
 	ngOnInit() {
+		this.init();
 		this._breadcrumbService.setBreadcrumbs(BreadcrumbClass.DatabasePage);
 	}
 }

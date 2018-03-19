@@ -1,21 +1,33 @@
 # SQL Operations Studio
 
+[![Join the chat at https://gitter.im/Microsoft/sqlopsstudio](https://badges.gitter.im/Microsoft/sqlopsstudio.svg)](https://gitter.im/Microsoft/sqlopsstudio?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+
 SQL Operations Studio is a data management tool that enables you to work with SQL Server, Azure SQL DB and SQL DW from Windows, macOS and Linux.
 
-**Download SQL Operations Studio January Public Preview**
+**Download SQL Operations Studio February Public Preview**
 
 Platform | Link
 -- | --
-Windows Setup Installer | https://go.microsoft.com/fwlink/?linkid=866480
-Windows ZIP | https://go.microsoft.com/fwlink/?linkid=866479
-macOS ZIP | https://go.microsoft.com/fwlink/?linkid=866481
-Linux TAR.GZ | https://go.microsoft.com/fwlink/?linkid=866482
-Linux DEB | https://go.microsoft.com/fwlink/?linkid=866484
-Linux RPM | https://go.microsoft.com/fwlink/?linkid=866483
+Windows Setup Installer | https://go.microsoft.com/fwlink/?linkid=867998
+Windows ZIP | https://go.microsoft.com/fwlink/?linkid=867997
+macOS ZIP | https://go.microsoft.com/fwlink/?linkid=867999
+Linux TAR.GZ | https://go.microsoft.com/fwlink/?linkid=868000
+Linux DEB | https://go.microsoft.com/fwlink/?linkid=868002
+Linux RPM | https://go.microsoft.com/fwlink/?linkid=868001
 
 Go to our [download page](https://aka.ms/sqlopsstudio) for more specific instructions.
 
 Try out the latest insiders build from `master` at https://github.com/Microsoft/sqlopsstudio/releases.
+
+See the [change log](https://github.com/Microsoft/sqlopsstudio/blob/master/CHANGELOG.md) for additional details of what's in this release.
+
+**Design Discussions**
+
+The SQL Operations Studio team would like to incorporate community feedback earlier in the development process.  To facilitate this, we'd like to share our designs while features are actively being built.
+
+We're currently collecting input on the **SQL Agent** experience and enhancements to the Manage Dashboard that we're calling **"Command Center"**.  We'll add additional design feedback requests below as we start work in new feature areas.  Please leave comments on these issues to help us understand your requirements and shape feature development.
+
+* [#750 Seeking community feedback on SQL Agent UX prototype](https://github.com/Microsoft/sqlopsstudio/issues/750)
 
 **Feature Highlights**
 
@@ -46,8 +58,27 @@ please see the document [How to Contribute](https://github.com/Microsoft/sqlopss
 
 This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/). For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/) or contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
 
+## Localization
+SQL Operations Studio localization is now open for community contributions. You can contribute to localization for both software and docs. https://aka.ms/SQLOpsStudioLoc
+
+Localization is now opened for 10 languages: French, Italian, German, Spanish, Simplified Chinese, Traditional Chinese, Japanese, Korean, Russian, and Portuguese (Brazil). Help us make SQL Operations Studio available in your language!
+
 ## Privacy Statement
 The [Microsoft Enterprise and Developer Privacy Statement](https://privacy.microsoft.com/en-us/privacystatement) describes the privacy statement of this software.
+
+## Contributions and "thank you"
+We would like to thank all our users who raised issues, and in particular the following users who helped contribute fixes:
+
+* SebastianPfliegel for `Add cursor snippet (#475)`
+* mikaoelitiana for fix: `revert README and CONTRIBUTING after last VSCode merge (#574)`
+* alextercete for `Reinstate menu item to install from VSIX (#682)`
+* alextercete for `Fix "No extension gallery service configured" error (#427)`
+* mwiedemeyer for `Fix #58: Default sort order for DB size widget (#111)`
+* AlexTroshkin for `Show disconnect in context menu only when connectionProfile connected (#150)`
+* AlexTroshkin for `Fix #138: Invalid syntax color highlighting (identity not highlighting) (#140))`
+* stebet for `Fix #153: Fixing sql snippets that failed on a DB with case-sensitive collation. (#152)`
+* SebastianPfliegel `Remove sqlExtensionHelp (#312)`
+* olljanat for `Implemented npm version check (#314)`
 
 ## License
 

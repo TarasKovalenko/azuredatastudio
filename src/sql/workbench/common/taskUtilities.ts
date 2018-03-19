@@ -20,7 +20,7 @@ import { IInsightsConfig } from 'sql/parts/dashboard/widgets/insights/interfaces
 import { IInsightsDialogService } from 'sql/parts/insights/common/interfaces';
 import { ConnectionManagementInfo } from 'sql/parts/connection/common/connectionManagementInfo';
 import Severity from 'vs/base/common/severity';
-import data = require('data');
+import * as sqlops from 'sqlops';
 import nls = require('vs/nls');
 import os = require('os');
 import path = require('path');
@@ -134,10 +134,10 @@ export function connectIfNotAlreadyConnected(connectionProfile: IConnectionProfi
 /**
  * Select the top rows from an object
  */
-export function scriptSelect(connectionProfile: IConnectionProfile, metadata: data.ObjectMetadata, connectionService: IConnectionManagementService, queryEditorService: IQueryEditorService, scriptingService: IScriptingService): Promise<void> {
+export function scriptSelect(connectionProfile: IConnectionProfile, metadata: sqlops.ObjectMetadata, connectionService: IConnectionManagementService, queryEditorService: IQueryEditorService, scriptingService: IScriptingService): Promise<void> {
 	return new Promise<void>((resolve, reject) => {
 		connectionService.connectIfNotConnected(connectionProfile).then(connectionResult => {
-			let paramDetails: data.ScriptingParamDetails = getScriptingParamDetails(connectionService, connectionResult, metadata);
+			let paramDetails: sqlops.ScriptingParamDetails = getScriptingParamDetails(connectionService, connectionResult, metadata);
 			scriptingService.script(connectionResult, metadata, ScriptOperation.Select, paramDetails).then(result => {
 				if (result.script) {
 					queryEditorService.newSqlEditor(result.script).then((owner: IConnectableInput) => {
@@ -190,7 +190,7 @@ export function editData(connectionProfile: IConnectionProfile, tableName: strin
 /**
  * Script the object as a statement based on the provided action (except Select)
  */
-export function script(connectionProfile: IConnectionProfile, metadata: data.ObjectMetadata,
+export function script(connectionProfile: IConnectionProfile, metadata: sqlops.ObjectMetadata,
 	connectionService: IConnectionManagementService,
 	queryEditorService: IQueryEditorService,
 	scriptingService: IScriptingService,
@@ -348,15 +348,20 @@ export function openInsight(query: IInsightsConfig, profile: IConnectionProfile,
  * Get the current global connection, which is the connection from the active editor, unless OE
  * is focused or there is no such editor, in which case it comes from the OE selection. Returns
  * undefined when there is no such connection.
+ *
+ * @param objectExplorerService
+ * @param connectionManagementService
+ * @param workbenchEditorService
+ * @param topLevelOnly If true, only return top-level (i.e. connected) Object Explorer connections instead of database connections when appropriate
 */
-export function getCurrentGlobalConnection(objectExplorerService: IObjectExplorerService, connectionManagementService: IConnectionManagementService, workbenchEditorService: IWorkbenchEditorService): IConnectionProfile {
+export function getCurrentGlobalConnection(objectExplorerService: IObjectExplorerService, connectionManagementService: IConnectionManagementService, workbenchEditorService: IWorkbenchEditorService, topLevelOnly: boolean = false): IConnectionProfile {
 	let connection: IConnectionProfile;
 
 	let objectExplorerSelection = objectExplorerService.getSelectedProfileAndDatabase();
 	if (objectExplorerSelection) {
 		let objectExplorerProfile = objectExplorerSelection.profile;
 		if (connectionManagementService.isProfileConnected(objectExplorerProfile)) {
-			if (objectExplorerSelection.databaseName) {
+			if (objectExplorerSelection.databaseName && !topLevelOnly) {
 				connection = objectExplorerProfile.cloneWithDatabase(objectExplorerSelection.databaseName);
 			} else {
 				connection = objectExplorerProfile;
@@ -397,9 +402,9 @@ function getStartPos(script: string, operation: ScriptOperation, typeName: strin
 }
 
 
-function getScriptingParamDetails(connectionService: IConnectionManagementService, ownerUri: string, metadata: data.ObjectMetadata): data.ScriptingParamDetails {
-	let serverInfo: data.ServerInfo = getServerInfo(connectionService, ownerUri);
-	let paramDetails: data.ScriptingParamDetails = {
+function getScriptingParamDetails(connectionService: IConnectionManagementService, ownerUri: string, metadata: sqlops.ObjectMetadata): sqlops.ScriptingParamDetails {
+	let serverInfo: sqlops.ServerInfo = getServerInfo(connectionService, ownerUri);
+	let paramDetails: sqlops.ScriptingParamDetails = {
 		filePath: getFilePath(metadata),
 		scriptCompatibilityOption: scriptCompatibilityOptionMap[serverInfo.serverMajorVersion],
 		targetDatabaseEngineEdition: targetDatabaseEngineEditionMap[serverInfo.engineEditionId],
@@ -408,7 +413,7 @@ function getScriptingParamDetails(connectionService: IConnectionManagementServic
 	return paramDetails;
 }
 
-function getFilePath(metadata: data.ObjectMetadata): string {
+function getFilePath(metadata: sqlops.ObjectMetadata): string {
 	let schemaName: string = metadata.schema;
 	let objectName: string = metadata.name;
 	let timestamp = Date.now().toString();
@@ -419,7 +424,7 @@ function getFilePath(metadata: data.ObjectMetadata): string {
 	}
 }
 
-function getServerInfo(connectionService: IConnectionManagementService, ownerUri: string): data.ServerInfo {
+function getServerInfo(connectionService: IConnectionManagementService, ownerUri: string): sqlops.ServerInfo {
 	let connection: ConnectionManagementInfo = connectionService.getConnectionInfo(ownerUri);
 	return connection.serverInfo;
 }

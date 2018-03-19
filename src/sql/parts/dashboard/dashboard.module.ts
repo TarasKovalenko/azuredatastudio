@@ -6,7 +6,7 @@
 import { Inject, NgModule, forwardRef, ApplicationRef, ComponentFactoryResolver } from '@angular/core';
 import { CommonModule, APP_BASE_HREF } from '@angular/common';
 import { BrowserModule } from '@angular/platform-browser';
-import { RouterModule, Routes, UrlSerializer } from '@angular/router';
+import { RouterModule, Routes, UrlSerializer, Router, NavigationEnd } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { NgGridModule } from 'angular2-grid';
 import { ChartsModule } from 'ng2-charts/ng2-charts';
@@ -17,6 +17,11 @@ import { Extensions, IInsightRegistry } from 'sql/platform/dashboard/common/insi
 
 import { Registry } from 'vs/platform/registry/common/platform';
 
+/* Telemetry */
+import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
+import * as TelemetryUtils from 'sql/common/telemetryUtilities';
+import * as TelemetryKeys from 'sql/common/telemetryKeys';
+
 /* Services */
 import { BreadcrumbService } from 'sql/parts/dashboard/services/breadcrumb.service';
 import { DashboardServiceInterface } from 'sql/parts/dashboard/services/dashboardServiceInterface.service';
@@ -26,14 +31,27 @@ import { ComponentHostDirective } from 'sql/parts/dashboard/common/componentHost
 
 /* Base Components */
 import { DashboardComponent, DASHBOARD_SELECTOR } from 'sql/parts/dashboard/dashboard.component';
-import { DashboardWidgetWrapper } from 'sql/parts/dashboard/common/dashboardWidgetWrapper.component';
+import { DashboardWidgetWrapper } from 'sql/parts/dashboard/contents/dashboardWidgetWrapper.component';
+import { DashboardWidgetContainer } from 'sql/parts/dashboard/containers/dashboardWidgetContainer.component';
+import { DashboardGridContainer } from 'sql/parts/dashboard/containers/dashboardGridContainer.component';
+import { DashboardWebviewContainer } from 'sql/parts/dashboard/containers/dashboardWebviewContainer.component';
+import { DashboardErrorContainer } from 'sql/parts/dashboard/containers/dashboardErrorContainer.component';
+import { DashboardNavSection } from 'sql/parts/dashboard/containers/dashboardNavSection.component';
+import { WidgetContent } from 'sql/parts/dashboard/contents/widgetContent.component';
+import { WebviewContent } from 'sql/parts/dashboard/contents/webviewContent.component';
 import { BreadcrumbComponent } from 'sql/base/browser/ui/breadcrumb/breadcrumb.component';
 import { IBreadcrumbService } from 'sql/base/browser/ui/breadcrumb/interfaces';
-let baseComponents = [DashboardComponent, DashboardWidgetWrapper, ComponentHostDirective, BreadcrumbComponent];
+import { DashboardHomeContainer } from 'sql/parts/dashboard/containers/dashboardHomeContainer.component';
+
+let baseComponents = [DashboardHomeContainer, DashboardComponent, DashboardWidgetWrapper, DashboardWebviewContainer, DashboardWidgetContainer, DashboardGridContainer, DashboardErrorContainer, DashboardNavSection, WidgetContent, WebviewContent, ComponentHostDirective, BreadcrumbComponent];
+
+/* Panel */
+import { PanelModule } from 'sql/base/browser/ui/panel/panel.module';
 
 /* Pages */
 import { ServerDashboardPage } from 'sql/parts/dashboard/pages/serverDashboardPage.component';
 import { DatabaseDashboardPage } from 'sql/parts/dashboard/pages/databaseDashboardPage.component';
+
 let pageComponents = [ServerDashboardPage, DatabaseDashboardPage];
 
 /* Widget Components */
@@ -41,7 +59,15 @@ import { PropertiesWidgetComponent } from 'sql/parts/dashboard/widgets/propertie
 import { ExplorerWidget } from 'sql/parts/dashboard/widgets/explorer/explorerWidget.component';
 import { TasksWidget } from 'sql/parts/dashboard/widgets/tasks/tasksWidget.component';
 import { InsightsWidget } from 'sql/parts/dashboard/widgets/insights/insightsWidget.component';
-let widgetComponents = [PropertiesWidgetComponent, ExplorerWidget, TasksWidget, InsightsWidget];
+import { WebviewWidget } from 'sql/parts/dashboard/widgets/webview/webviewWidget.component';
+
+let widgetComponents = [
+	PropertiesWidgetComponent,
+	ExplorerWidget,
+	TasksWidget,
+	InsightsWidget,
+	WebviewWidget
+];
 
 /* Insights */
 let insightComponents = Registry.as<IInsightRegistry>(Extensions.InsightContribution).getAllCtors();
@@ -78,7 +104,8 @@ const appRoutes: Routes = [
 		FormsModule,
 		NgGridModule,
 		ChartsModule,
-		RouterModule.forRoot(appRoutes)
+		RouterModule.forRoot(appRoutes),
+		PanelModule
 	],
 	providers: [
 		{ provide: APP_BASE_HREF, useValue: '/' },
@@ -92,7 +119,8 @@ export class DashboardModule {
 	constructor(
 		@Inject(forwardRef(() => ComponentFactoryResolver)) private _resolver: ComponentFactoryResolver,
 		@Inject(BOOTSTRAP_SERVICE_ID) private _bootstrapService: IBootstrapService,
-		@Inject(forwardRef(() => DashboardServiceInterface)) private _bootstrap: DashboardServiceInterface
+		@Inject(forwardRef(() => DashboardServiceInterface)) private _bootstrap: DashboardServiceInterface,
+		@Inject(forwardRef(() => Router)) private _router: Router
 	) {
 	}
 
@@ -102,5 +130,15 @@ export class DashboardModule {
 		this._bootstrap.selector = uniqueSelector;
 		(<any>factory).factory.selector = uniqueSelector;
 		appRef.bootstrap(factory);
+
+		this._router.events.subscribe(e => {
+			if (e instanceof NavigationEnd) {
+				this._bootstrap.handlePageNavigation();
+				TelemetryUtils.addTelemetry(this._bootstrapService.telemetryService, TelemetryKeys.DashboardNavigated, {
+					numberOfNavigations: this._bootstrap.getNumberOfPageNavigations(),
+					routeUrl: e.url
+				});
+			}
+		});
 	}
 }

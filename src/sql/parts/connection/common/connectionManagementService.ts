@@ -31,7 +31,7 @@ import { IResourceProviderService } from 'sql/parts/accountManagement/common/int
 import { IAngularEventingService, AngularEventType } from 'sql/services/angularEventing/angularEventingService';
 import * as QueryConstants from 'sql/parts/query/common/constants';
 
-import * as data from 'data';
+import * as sqlops from 'sqlops';
 
 import * as nls from 'vs/nls';
 import * as errors from 'vs/base/common/errors';
@@ -56,6 +56,7 @@ import { IViewletService } from 'vs/workbench/services/viewlet/browser/viewlet';
 import { IStatusbarService } from 'vs/platform/statusbar/common/statusbar';
 import { ICommandService } from 'vs/platform/commands/common/commands';
 import { Deferred } from 'sql/base/common/promise';
+import { ConnectionOptionSpecialType } from 'sql/workbench/api/common/sqlExtHostTypes';
 
 export class ConnectionManagementService implements IConnectionManagementService {
 
@@ -63,7 +64,7 @@ export class ConnectionManagementService implements IConnectionManagementService
 
 	private disposables: IDisposable[] = [];
 
-	private _providers: { [handle: string]: data.ConnectionProvider; } = Object.create(null);
+	private _providers: { [handle: string]: sqlops.ConnectionProvider; } = Object.create(null);
 
 	private _uriToProvider: { [uri: string]: string; } = Object.create(null);
 
@@ -75,7 +76,7 @@ export class ConnectionManagementService implements IConnectionManagementService
 	private _onDisconnect: Emitter<IConnectionParams>;
 	private _onConnectRequestSent: Emitter<void>;
 	private _onConnectionChanged: Emitter<IConnectionParams>;
-	private _onLanguageFlavorChanged: Emitter<data.DidChangeLanguageFlavorParams>;
+	private _onLanguageFlavorChanged: Emitter<sqlops.DidChangeLanguageFlavorParams>;
 
 	private _connectionGlobalStatus: ConnectionGlobalStatus;
 
@@ -125,7 +126,7 @@ export class ConnectionManagementService implements IConnectionManagementService
 		this._onDisconnect = new Emitter<IConnectionParams>();
 		this._onConnectionChanged = new Emitter<IConnectionParams>();
 		this._onConnectRequestSent = new Emitter<void>();
-		this._onLanguageFlavorChanged = new Emitter<data.DidChangeLanguageFlavorParams>();
+		this._onLanguageFlavorChanged = new Emitter<sqlops.DidChangeLanguageFlavorParams>();
 
 		this._onProvidersReady = new Deferred();
 
@@ -136,9 +137,9 @@ export class ConnectionManagementService implements IConnectionManagementService
 			100 /* High Priority */
 		));
 
-		if (_capabilitiesService && _capabilitiesService.onProviderRegisteredEvent) {
-			_capabilitiesService.onProviderRegisteredEvent((capabilities => {
-				if (capabilities.providerName === 'MSSQL') {
+		if (_capabilitiesService) {
+			_capabilitiesService.onCapabilitiesRegistered((p => {
+				if (p === 'MSSQL') {
 					if (!this.hasRegisteredServers()) {
 						// prompt the user for a new connection on startup if no profiles are registered
 						this.showConnectionDialog();
@@ -181,7 +182,7 @@ export class ConnectionManagementService implements IConnectionManagementService
 		return this._onConnectRequestSent.event;
 	}
 
-	public get onLanguageFlavorChanged(): Event<data.DidChangeLanguageFlavorParams> {
+	public get onLanguageFlavorChanged(): Event<sqlops.DidChangeLanguageFlavorParams> {
 		return this._onLanguageFlavorChanged.event;
 	}
 
@@ -194,7 +195,7 @@ export class ConnectionManagementService implements IConnectionManagementService
 	private _providerCount: number = 0;
 
 	// Connection Provider Registration
-	public registerProvider(providerId: string, provider: data.ConnectionProvider): void {
+	public registerProvider(providerId: string, provider: sqlops.ConnectionProvider): void {
 		this._providers[providerId] = provider;
 
 		// temporarily close splash screen when a connection provider has been registered
@@ -654,12 +655,12 @@ export class ConnectionManagementService implements IConnectionManagementService
 		return this._connectionStore.clearRecentlyUsed();
 	}
 
-	public clearRecentConnection(connectionProfile: IConnectionProfile) : void {
+	public clearRecentConnection(connectionProfile: IConnectionProfile): void {
 		this._connectionStore.removeConnectionToMemento(connectionProfile, Constants.recentConnections);
 	}
 
 	public getActiveConnections(): ConnectionProfile[] {
-		return this._connectionStore.getActiveConnections();
+		return this._connectionStatusManager.getActiveConnectionProfiles();
 	}
 
 	public saveProfileGroup(profile: IConnectionProfileGroup): Promise<string> {
@@ -678,21 +679,13 @@ export class ConnectionManagementService implements IConnectionManagementService
 		return Object.keys(this._providers);
 	}
 
-	public getCapabilities(providerName: string): data.DataProtocolServerCapabilities {
-		let capabilities = this._capabilitiesService.getCapabilities();
-		if (capabilities !== undefined && capabilities.length > 0) {
-			return capabilities.find(c => c.providerName === providerName);
-		}
-		return undefined;
-	}
+	public getAdvancedProperties(): sqlops.ConnectionOption[] {
 
-	public getAdvancedProperties(): data.ConnectionOption[] {
-
-		let capabilities = this._capabilitiesService.getCapabilities();
-		if (capabilities !== undefined && capabilities.length > 0) {
+		let providers = this._capabilitiesService.providers;
+		if (providers !== undefined && providers.length > 0) {
 			// just grab the first registered provider for now, this needs to change
 			// to lookup based on currently select provider
-			let providerCapabilities = capabilities[0];
+			let providerCapabilities = this._capabilitiesService.getCapabilities(providers[0]);
 			if (!!providerCapabilities.connectionProvider) {
 				return providerCapabilities.connectionProvider.options;
 			}
@@ -831,13 +824,13 @@ export class ConnectionManagementService implements IConnectionManagementService
 		});
 	}
 
-	private sendListDatabasesRequest(uri: string): Thenable<data.ListDatabasesResult> {
+	private sendListDatabasesRequest(uri: string): Thenable<sqlops.ListDatabasesResult> {
 		let providerId: string = this.getProviderIdFromUri(uri);
 		if (!providerId) {
 			return Promise.resolve(undefined);
 		}
 
-		return new Promise<data.ListDatabasesResult>((resolve, reject) => {
+		return new Promise<sqlops.ListDatabasesResult>((resolve, reject) => {
 			let provider = this._providers[providerId];
 			provider.listDatabases(uri).then(result => {
 				if (result && result.databaseNames) {
@@ -894,7 +887,7 @@ export class ConnectionManagementService implements IConnectionManagementService
 		});
 	}
 
-	public onConnectionComplete(handle: number, info: data.ConnectionInfoSummary): void {
+	public onConnectionComplete(handle: number, info: sqlops.ConnectionInfoSummary): void {
 		const self = this;
 		let connection = this._connectionStatusManager.onConnectionComplete(info);
 
@@ -922,7 +915,7 @@ export class ConnectionManagementService implements IConnectionManagementService
 		}
 	}
 
-	public onConnectionChangedNotification(handle: number, changedConnInfo: data.ChangedConnectionInfo): void {
+	public onConnectionChangedNotification(handle: number, changedConnInfo: sqlops.ChangedConnectionInfo): void {
 		let profile: IConnectionProfile = this._connectionStatusManager.onConnectionChanged(changedConnInfo);
 		this._notifyConnectionChanged(profile, changedConnInfo.connectionUri);
 	}
@@ -1022,28 +1015,26 @@ export class ConnectionManagementService implements IConnectionManagementService
 		const self = this;
 
 		return new Promise<IConnectionResult>((resolve, reject) => {
-			this._capabilitiesService.onCapabilitiesReady().then(() => {
-				let connectionInfo = this._connectionStatusManager.addConnection(connection, uri);
-				// Setup the handler for the connection complete notification to call
-				connectionInfo.connectHandler = ((connectResult, errorMessage, errorCode, callStack) => {
-					let connectionMngInfo = this._connectionStatusManager.findConnection(uri);
-					if (connectionMngInfo && connectionMngInfo.deleted) {
+			let connectionInfo = this._connectionStatusManager.addConnection(connection, uri);
+			// Setup the handler for the connection complete notification to call
+			connectionInfo.connectHandler = ((connectResult, errorMessage, errorCode, callStack) => {
+				let connectionMngInfo = this._connectionStatusManager.findConnection(uri);
+				if (connectionMngInfo && connectionMngInfo.deleted) {
+					this._connectionStatusManager.deleteConnection(uri);
+					resolve({ connected: connectResult, errorMessage: undefined, errorCode: undefined, callStack: undefined, errorHandled: true });
+				} else {
+					if (errorMessage) {
+						// Connection to the server failed
 						this._connectionStatusManager.deleteConnection(uri);
-						resolve({ connected: connectResult, errorMessage: undefined, errorCode: undefined, callStack: undefined, errorHandled: true });
+						resolve({ connected: connectResult, errorMessage: errorMessage, errorCode: errorCode, callStack: callStack });
 					} else {
-						if (errorMessage) {
-							// Connection to the server failed
-							this._connectionStatusManager.deleteConnection(uri);
-							resolve({ connected: connectResult, errorMessage: errorMessage, errorCode: errorCode, callStack: callStack });
-						} else {
-							resolve({ connected: connectResult, errorMessage: errorMessage, errorCode: errorCode, callStack: callStack });
-						}
+						resolve({ connected: connectResult, errorMessage: errorMessage, errorCode: errorCode, callStack: callStack });
 					}
-				});
-
-				// send connection request
-				self.sendConnectRequest(connection, uri);
+				}
 			});
+
+			// send connection request
+			self.sendConnectRequest(connection, uri);
 		});
 	}
 
@@ -1055,8 +1046,8 @@ export class ConnectionManagementService implements IConnectionManagementService
 		return new Promise<boolean>((resolve, reject) => {
 			// Setup our cancellation choices
 			let choices: { key, value }[] = [
-				{ key: nls.localize('yes', 'Yes'), value: true },
-				{ key: nls.localize('no', 'No'), value: false }
+				{ key: nls.localize('connectionService.yes', 'Yes'), value: true },
+				{ key: nls.localize('connectionService.no', 'No'), value: false }
 			];
 
 			self._quickOpenService.pick(choices.map(x => x.key), { placeHolder: nls.localize('cancelConnectionConfirmation', 'Are you sure you want to cancel this connection?'), ignoreFocusLost: true }).then((choice) => {
@@ -1196,7 +1187,7 @@ export class ConnectionManagementService implements IConnectionManagementService
 		return this._connectionStatusManager.isConnected(fileUri) ? this._connectionStatusManager.findConnection(fileUri) : undefined;
 	}
 
-	public listDatabases(connectionUri: string): Thenable<data.ListDatabasesResult> {
+	public listDatabases(connectionUri: string): Thenable<sqlops.ListDatabasesResult> {
 		const self = this;
 		if (self.isConnected(connectionUri)) {
 			return self.sendListDatabasesRequest(connectionUri);
@@ -1350,5 +1341,27 @@ export class ConnectionManagementService implements IConnectionManagementService
 		if (this._editorGroupService instanceof EditorPart) {
 			this._editorGroupService.refreshEditorTitles();
 		}
+	}
+
+	public removeConnectionProfileCredentials(originalProfile: IConnectionProfile): IConnectionProfile {
+		return this._connectionStore.getProfileWithoutPassword(originalProfile);
+	}
+
+	public getActiveConnectionCredentials(profileId: string): { [name: string]: string } {
+		let profile = this.getActiveConnections().find(connectionProfile => connectionProfile.id === profileId);
+		if (!profile) {
+			return undefined;
+		}
+
+		// Find the password option for the connection provider
+		let passwordOption = this._capabilitiesService.getCapabilities(profile.providerName).connectionProvider.options.find(
+			option => option.specialValueType === ConnectionOptionSpecialType.password);
+		if (!passwordOption) {
+			return undefined;
+		}
+
+		let credentials = {};
+		credentials[passwordOption.name] = profile.options[passwordOption.name];
+		return credentials;
 	}
 }

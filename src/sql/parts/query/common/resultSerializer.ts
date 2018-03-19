@@ -7,7 +7,7 @@ import * as ConnectionConstants from 'sql/parts/connection/common/constants';
 import * as Constants from 'sql/parts/query/common/constants';
 import * as LocalizedConstants from 'sql/parts/query/common/localizedConstants';
 import * as WorkbenchUtils from 'sql/workbench/common/sqlWorkbenchUtils';
-import { SaveResultsRequestParams } from 'data';
+import { SaveResultsRequestParams } from 'sqlops';
 import { IQueryManagementService } from 'sql/parts/query/common/queryManagement';
 import { ISaveRequest, SaveFormat } from 'sql/parts/grid/common/interfaces';
 import * as PathUtilities from 'sql/common/pathUtilities';
@@ -28,6 +28,8 @@ import * as pretty from 'pretty-data';
 
 import { ISlickRange } from 'angular2-slickgrid';
 import * as path from 'path';
+
+let prevSavePath: string;
 
 /**
  *  Handles save results request from the context menu of slickGrid
@@ -139,13 +141,14 @@ export class ResultSerializer {
 	}
 
 	private promptForFilepath(saveRequest: ISaveRequest): string {
-		let filepathPlaceHolder = PathUtilities.resolveCurrentDirectory(this._uri, this.rootPath);
+		let filepathPlaceHolder = (prevSavePath) ? prevSavePath : PathUtilities.resolveCurrentDirectory(this._uri, this.rootPath);
 		filepathPlaceHolder = path.join(filepathPlaceHolder, this.getResultsDefaultFilename(saveRequest));
 
 		let filePath: string = this._windowService.showSaveDialog({
-			title: nls.localize('saveAsFileTitle', 'Choose Results File'),
+			title: nls.localize('resultsSerializer.saveAsFileTitle', 'Choose Results File'),
 			defaultPath: paths.normalize(filepathPlaceHolder, true)
 		});
+		prevSavePath = filePath;
 		return filePath;
 	}
 

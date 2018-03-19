@@ -7,9 +7,22 @@
 
 import { ConnectionProfile } from 'sql/parts/connection/common/connectionProfile';
 import { NodeType } from 'sql/parts/registeredServer/common/nodeType';
-import * as data from 'data';
+import * as sqlops from 'sqlops';
 
 import * as UUID from 'vs/base/common/uuid';
+
+export enum TreeItemCollapsibleState {
+	None = 0,
+	Collapsed = 1,
+	Expanded = 2
+}
+
+export interface ObjectExplorerCallbacks {
+	getChildren(treeNode: TreeNode): Thenable<TreeNode[]>;
+	isExpanded(treeNode: TreeNode): Thenable<boolean>;
+	setNodeExpandedState(TreeNode: TreeNode, expandedState: TreeItemCollapsibleState): Thenable<void>;
+	setNodeSelected(TreeNode: TreeNode, selected: boolean, clearOtherSelections?: boolean): Thenable<void>;
+}
 
 export class TreeNode {
 	/**
@@ -59,16 +72,16 @@ export class TreeNode {
 	public nodeStatus: string;
 
 	/**
-  * Children of this node
-  */
+	 * Children of this node
+	 */
 	public children: TreeNode[];
 
 
 	public connection: ConnectionProfile;
 
-	public session: data.ObjectExplorerSession;
+	public session: sqlops.ObjectExplorerSession;
 
-	public metadata: data.ObjectMetadata;
+	public metadata: sqlops.ObjectMetadata;
 
 	public getConnectionProfile(): ConnectionProfile {
 		var currentNode: TreeNode = this;
@@ -93,7 +106,7 @@ export class TreeNode {
 		return undefined;
 	}
 
-	public getSession(): data.ObjectExplorerSession {
+	public getSession(): sqlops.ObjectExplorerSession {
 		var currentNode: TreeNode = this;
 		while (!currentNode.session && currentNode.parent) {
 			currentNode = currentNode.parent;
@@ -108,8 +121,38 @@ export class TreeNode {
 		return false;
 	}
 
+	public toNodeInfo(): sqlops.NodeInfo {
+		return <sqlops.NodeInfo> {
+			nodePath: this.nodePath,
+			nodeType: this.nodeTypeId,
+			nodeSubType: this.nodeSubType,
+			nodeStatus: this.nodeStatus,
+			label: this.label,
+			isLeaf: this.isAlwaysLeaf,
+			metadata: this.metadata,
+			errorMessage: this.errorStateMessage
+		};
+	}
+
+	public getChildren(): Thenable<TreeNode[]> {
+		return this._objectExplorerCallbacks.getChildren(this);
+	}
+
+	public isExpanded(): Thenable<boolean> {
+		return this._objectExplorerCallbacks.isExpanded(this);
+	}
+
+	public setExpandedState(expandedState: TreeItemCollapsibleState): Thenable<void> {
+		return this._objectExplorerCallbacks.setNodeExpandedState(this, expandedState);
+	}
+
+	public setSelected(selected: boolean, clearOtherSelections?: boolean): Thenable<void> {
+		return this._objectExplorerCallbacks.setNodeSelected(this, selected, clearOtherSelections);
+	}
+
 	constructor(nodeTypeId: string, label: string, isAlwaysLeaf: boolean, nodePath: string,
-		nodeSubType: string, nodeStatus: string, parent: TreeNode, metadata: data.ObjectMetadata) {
+		nodeSubType: string, nodeStatus: string, parent: TreeNode, metadata: sqlops.ObjectMetadata,
+		private _objectExplorerCallbacks: ObjectExplorerCallbacks) {
 		this.nodeTypeId = nodeTypeId;
 		this.label = label;
 		this.isAlwaysLeaf = isAlwaysLeaf;

@@ -5,54 +5,73 @@
 
 'use strict';
 
-import data = require('data');
+import { Disposable } from 'vs/base/common/lifecycle';
+import { isString } from 'vs/base/common/types';
+
+import * as sqlops from 'sqlops';
 import * as interfaces from 'sql/parts/connection/common/interfaces';
 import { ConnectionOptionSpecialType, ServiceOptionType } from 'sql/workbench/api/common/sqlExtHostTypes';
 import * as Constants from 'sql/parts/connection/common/constants';
+import { ICapabilitiesService } from 'sql/services/capabilities/capabilitiesService';
 
-export class ProviderConnectionInfo implements data.ConnectionInfo {
+export class ProviderConnectionInfo extends Disposable implements sqlops.ConnectionInfo {
 
-	options: { [name: string]: any };
+	options: { [name: string]: any } = {};
 
-	public providerName: string;
-	protected _serverCapabilities: data.DataProtocolServerCapabilities;
+	private _providerName: string;
+	protected _serverCapabilities: sqlops.DataProtocolServerCapabilities;
 	private static readonly SqlAuthentication = 'SqlLogin';
 	public static readonly ProviderPropertyName = 'providerName';
 
-	public constructor(serverCapabilities?: data.DataProtocolServerCapabilities, model?: interfaces.IConnectionProfile) {
-		this.options = {};
-		if (serverCapabilities) {
-			this._serverCapabilities = serverCapabilities;
-			this.providerName = serverCapabilities.providerName;
-		}
-		if (model) {
-			if (model.options && this._serverCapabilities) {
-				this._serverCapabilities.connectionProvider.options.forEach(option => {
-					let value = model.options[option.name];
-					this.options[option.name] = value;
-				});
+	public constructor(
+		protected capabilitiesService: ICapabilitiesService,
+		model: string | interfaces.IConnectionProfile
+	) {
+		super();
+		// we can't really do a whole lot if we don't have a provider
+		if (isString(model) || (model && model.providerName)) {
+			this.providerName = isString(model) ? model : model.providerName;
+
+			if (!isString(model)) {
+				if (model.options && this._serverCapabilities) {
+					this._serverCapabilities.connectionProvider.options.forEach(option => {
+						let value = model.options[option.name];
+						this.options[option.name] = value;
+					});
+				}
+				this.serverName = model.serverName;
+				this.authenticationType = model.authenticationType;
+				this.databaseName = model.databaseName;
+				this.password = model.password;
+				this.userName = model.userName;
 			}
-			this.serverName = model.serverName;
-			this.authenticationType = model.authenticationType;
-			this.databaseName = model.databaseName;
-			this.password = model.password;
-			this.userName = model.userName;
+		}
+	}
+
+	public get providerName(): string {
+		return this._providerName;
+	}
+
+	public set providerName(name: string) {
+		this._providerName = name;
+		if (!this._serverCapabilities) {
+			this._serverCapabilities = this.capabilitiesService.getCapabilities(this.providerName);
+			this._register(this.capabilitiesService.onCapabilitiesRegistered(e => {
+				if (e === this.providerName) {
+					this._serverCapabilities = this.capabilitiesService.getCapabilities(e);
+				}
+			}));
 		}
 	}
 
 	public clone(): ProviderConnectionInfo {
-		let instance = new ProviderConnectionInfo(this._serverCapabilities);
+		let instance = new ProviderConnectionInfo(this.capabilitiesService, this.providerName);
 		instance.options = Object.assign({}, this.options);
-		instance.providerName = this.providerName;
 		return instance;
 	}
 
-	public get serverCapabilities(): data.DataProtocolServerCapabilities {
+	public get serverCapabilities(): sqlops.DataProtocolServerCapabilities {
 		return this._serverCapabilities;
-	}
-
-	public setServerCapabilities(value: data.DataProtocolServerCapabilities) {
-		this._serverCapabilities = value;
 	}
 
 	public get serverName(): string {
@@ -102,6 +121,23 @@ export class ProviderConnectionInfo implements data.ConnectionInfo {
 	public setOptionValue(name: string, value: any): void {
 		//TODO: validate
 		this.options[name] = value;
+	}
+
+	/**
+	 * Returns the title of the connection
+	 */
+	public get title(): string {
+		let databaseName = this.databaseName ? this.databaseName : '<default>';
+		let userName = this.userName ? this.userName : 'Windows Authentication';
+		let label = this.serverName + ', ' + databaseName + ' (' + userName + ')';
+		return label;
+	}
+
+	/**
+	 * Returns true if the capabilities and options are loaded correctly
+	 */
+	public get isConnectionOptionsValid(): boolean {
+		return this.serverCapabilities && this.title.indexOf('undefined') < 0;
 	}
 
 	public isPasswordRequired(): boolean {
@@ -203,7 +239,7 @@ export class ProviderConnectionInfo implements data.ConnectionInfo {
 		return displayName;
 	}
 
-	public getProviderOptions(): data.ConnectionOption[] {
+	public getProviderOptions(): sqlops.ConnectionOption[] {
 		return this._serverCapabilities.connectionProvider.options;
 	}
 

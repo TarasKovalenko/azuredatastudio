@@ -10,10 +10,15 @@ import { Registry } from 'vs/platform/registry/common/platform';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
 
 // --- SQL contributions
+import 'sql/workbench/api/node/mainThreadConnectionManagement';
 import 'sql/workbench/api/node/mainThreadCredentialManagement';
 import 'sql/workbench/api/node/mainThreadDataProtocol';
+import 'sql/workbench/api/node/mainThreadObjectExplorer';
 import 'sql/workbench/api/node/mainThreadSerializationProvider';
 import 'sql/workbench/api/node/mainThreadResourceProvider';
+import 'sql/workbench/api/electron-browser/mainThreadTasks';
+import 'sql/workbench/api/electron-browser/mainThreadDashboard';
+import 'sql/workbench/api/node/mainThreadDashboardWebview';
 import './mainThreadAccountManagement';
 import { LifecyclePhase } from 'vs/platform/lifecycle/common/lifecycle';
 

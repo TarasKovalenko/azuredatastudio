@@ -99,10 +99,10 @@ export default class ServiceDownloadProvider {
 		if (path.isAbsolute(installDirFromConfig)) {
 			basePath = installDirFromConfig;
 		} else if (this._fromBuild) {
-			basePath = path.join(__dirname, '../../../../../extensions/' + extensionConfigSectionName + '/' + installDirFromConfig);
+			basePath = path.join(__dirname, '../../../extensions/' + extensionConfigSectionName + '/' + installDirFromConfig);
 		} else {
 			// The path from config is relative to the out folder
-			basePath = path.join(__dirname, '../../../../' + extensionConfigSectionName + '/' +  installDirFromConfig);
+			basePath = path.join(__dirname, '../../../../' + installDirFromConfig);
 		}
 		return basePath;
 	}

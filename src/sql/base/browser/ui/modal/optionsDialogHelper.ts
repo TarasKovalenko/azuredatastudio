@@ -12,27 +12,26 @@ import { MessageType } from 'vs/base/browser/ui/inputbox/inputBox';
 import { IContextViewService } from 'vs/platform/contextview/browser/contextView';
 import { InputBox } from 'sql/base/browser/ui/inputBox/inputBox';
 import * as types from 'vs/base/common/types';
-import data = require('data');
+import * as sqlops from 'sqlops';
 import { localize } from 'vs/nls';
-import { ServiceOptionType, ServiceOptionTypeNames } from 'sql/workbench/api/common/sqlExtHostTypes';
+import { ServiceOptionType } from 'sql/workbench/api/common/sqlExtHostTypes';
 
 export interface IOptionElement {
 	optionWidget: any;
-	option: data.ServiceOption;
+	option: sqlops.ServiceOption;
 	optionValue: any;
 }
 
-export function createOptionElement(option: data.ServiceOption, rowContainer: Builder, options: { [name: string]: any },
+export function createOptionElement(option: sqlops.ServiceOption, rowContainer: Builder, options: { [name: string]: any },
 	optionsMap: { [optionName: string]: IOptionElement }, contextViewService: IContextViewService, onFocus: (name) => void): void {
 	let possibleInputs: string[] = [];
 	let optionValue = this.getOptionValueAndCategoryValues(option, options, possibleInputs);
 	let optionWidget: any;
 	let inputElement: HTMLElement;
-	let missingErrorMessage = localize('missingRequireField', ' is required.');
-	let invalidInputMessage = localize('invalidInput', 'Invalid input.  Numeric value expected.');
+	let missingErrorMessage = localize('optionsDialog.missingRequireField', ' is required.');
+	let invalidInputMessage = localize('optionsDialog.invalidInput', 'Invalid input.  Numeric value expected.');
 
-	let typeName: string = option.valueType.toString();
-	if (typeName === ServiceOptionTypeNames.number) {
+	if (option.valueType === ServiceOptionType.number) {
 		optionWidget = new InputBox(rowContainer.getHTMLElement(), contextViewService, {
 			validationOptions: {
 				validation: (value: string) => {
@@ -48,11 +47,11 @@ export function createOptionElement(option: data.ServiceOption, rowContainer: Bu
 		});
 		optionWidget.value = optionValue;
 		inputElement = this.findElement(rowContainer, 'input');
-	} else if (typeName === ServiceOptionTypeNames.category || typeName === ServiceOptionTypeNames.boolean) {
+	} else if (option.valueType === ServiceOptionType.category || option.valueType === ServiceOptionType.boolean) {
 		optionWidget = new SelectBox(possibleInputs, optionValue.toString());
 		DialogHelper.appendInputSelectBox(rowContainer, optionWidget);
 		inputElement = this.findElement(rowContainer, 'select-box');
-	} else if (typeName === ServiceOptionTypeNames.string || typeName === ServiceOptionTypeNames.password) {
+	} else if (option.valueType === ServiceOptionType.string || option.valueType === ServiceOptionType.password) {
 		optionWidget = new InputBox(rowContainer.getHTMLElement(), contextViewService, {
 			validationOptions: {
 				validation: (value: string) => (!value && option.isRequired) ? ({ type: MessageType.ERROR, content: option.displayName + missingErrorMessage }) : null
@@ -68,13 +67,11 @@ export function createOptionElement(option: data.ServiceOption, rowContainer: Bu
 	inputElement.onfocus = () => onFocus(option.name);
 }
 
-export function getOptionValueAndCategoryValues(option: data.ServiceOption, options: { [optionName: string]: any }, possibleInputs: string[]): any {
-
-	let valueTypeName:string = option.valueType.toString();
+export function getOptionValueAndCategoryValues(option: sqlops.ServiceOption, options: { [optionName: string]: any }, possibleInputs: string[]): any {
 	var optionValue = option.defaultValue;
 	if (options[option.name]) {
 		// if the value type is boolean, the option value can be either boolean or string
-		if (valueTypeName === ServiceOptionTypeNames.boolean) {
+		if (option.valueType === ServiceOptionType.boolean) {
 			if (options[option.name] === true || options[option.name] === this.trueInputValue) {
 				optionValue = this.trueInputValue;
 			} else {
@@ -85,13 +82,13 @@ export function getOptionValueAndCategoryValues(option: data.ServiceOption, opti
 		}
 	}
 
-	if (valueTypeName === ServiceOptionTypeNames.boolean || valueTypeName === ServiceOptionTypeNames.category) {
+	if (option.valueType === ServiceOptionType.boolean || option.valueType === ServiceOptionType.category) {
 		// If the option is not required, the empty string should be add at the top of possible choices
 		if (!option.isRequired) {
 			possibleInputs.push('');
 		}
 
-		if (valueTypeName === ServiceOptionTypeNames.boolean) {
+		if (option.valueType === ServiceOptionType.boolean) {
 			possibleInputs.push(this.trueInputValue, this.falseInputValue);
 		} else {
 			option.categoryValues.map(c => possibleInputs.push(c.name));
@@ -111,9 +108,9 @@ export function validateInputs(optionsMap: { [optionName: string]: IOptionElemen
 	for (var optionName in optionsMap) {
 		var optionElement: IOptionElement = optionsMap[optionName];
 		var widget = optionElement.optionWidget;
-		var isInputBox = (optionElement.option.valueType.toString() === ServiceOptionTypeNames.string ||
-			optionElement.option.valueType.toString() === ServiceOptionTypeNames.password ||
-			optionElement.option.valueType.toString() === ServiceOptionTypeNames.number);
+		var isInputBox = (optionElement.option.valueType === ServiceOptionType.string ||
+			optionElement.option.valueType === ServiceOptionType.password ||
+			optionElement.option.valueType === ServiceOptionType.number);
 
 		if (isInputBox) {
 			if (!widget.validate()) {
@@ -162,8 +159,8 @@ export function findElement(container: Builder, className: string): HTMLElement 
 	return elementBuilder.getHTMLElement();
 }
 
-export function groupOptionsByCategory(options: data.ServiceOption[]): { [category: string]: data.ServiceOption[] } {
-	var connectionOptionsMap: { [category: string]: data.ServiceOption[] } = {};
+export function groupOptionsByCategory(options: sqlops.ServiceOption[]): { [category: string]: sqlops.ServiceOption[] } {
+	var connectionOptionsMap: { [category: string]: sqlops.ServiceOption[] } = {};
 	options.forEach(option => {
 		var groupName = option.groupName;
 		if (groupName === null || groupName === undefined) {

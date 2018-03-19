@@ -5,7 +5,7 @@
 'use strict';
 
 import { ExtensionContext, workspace, window, OutputChannel, languages } from 'vscode';
-import { SqlOpsDataClient, LanguageClientOptions } from 'dataprotocol-client';
+import { SqlOpsDataClient, ClientOptions } from 'dataprotocol-client';
 import { CloseAction, ErrorAction, ServerOptions, NotificationHandler, NotificationType, RequestType, TransportKind } from 'vscode-languageclient';
 
 import { VscodeWrapper } from '../controllers/vscodeWrapper';
@@ -329,15 +329,33 @@ export class SqlToolsServiceClient {
 						languageClientHelper.createServerOptions(serverPath, runtimeId) : this.createServerOptions(serverPath);
 
 					// Options to control the language client
-					let clientOptions: LanguageClientOptions = {
+					let clientOptions: ClientOptions = {
 						documentSelector: [SqlToolsServiceClient._constants.languageId],
 						providerId: '',
 						synchronize: {
 							configurationSection: SqlToolsServiceClient._constants.extensionConfigSectionName
 						},
 						errorHandler: new LanguageClientErrorHandler(SqlToolsServiceClient._constants),
-						serverConnectionMetadata: this._config.getConfigValue(Constants.serverConnectionMetadata)
+						serverConnectionMetadata: this._config.getConfigValue(Constants.serverConnectionMetadata),
+						outputChannel: {
+							append: () => {
+							},
+							appendLine: () => {
+							},
+							dispose: () => {
+							},
+							clear: () => {
+							},
+							hide: () => {
+							},
+							name: '',
+							show: () => {
+							}
+						},
+						// pass in no features so we don't register features we don't want
+						features: []
 					};
+
 					this._serviceStatus.showServiceLoading();
 					// cache the client instance for later use
 					client = new SqlOpsDataClient(SqlToolsServiceClient._constants.serviceName, serverOptions, clientOptions);
@@ -389,14 +407,29 @@ export class SqlToolsServiceClient {
 
 	private createLanguageClient(serverOptions: ServerOptions): SqlOpsDataClient {
 		// Options to control the language client
-		let clientOptions: LanguageClientOptions = {
+		let clientOptions: ClientOptions = {
 			documentSelector: [SqlToolsServiceClient._constants.languageId],
 			providerId: SqlToolsServiceClient._constants.providerId,
 			synchronize: {
 				configurationSection: SqlToolsServiceClient._constants.extensionConfigSectionName
 			},
 			errorHandler: new LanguageClientErrorHandler(SqlToolsServiceClient._constants),
-			serverConnectionMetadata: this._config.getConfigValue(Constants.serverConnectionMetadata)
+			serverConnectionMetadata: this._config.getConfigValue(Constants.serverConnectionMetadata),
+			outputChannel: {
+				append: () => {
+				},
+				appendLine: () => {
+				},
+				dispose: () => {
+				},
+				clear: () => {
+				},
+				hide: () => {
+				},
+				name: '',
+				show: () => {
+				}
+			}
 		};
 
 		this._serviceStatus.showServiceLoading();

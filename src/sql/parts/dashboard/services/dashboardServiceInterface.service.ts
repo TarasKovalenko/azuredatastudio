@@ -20,9 +20,14 @@ import { toDisposableSubscription } from 'sql/parts/common/rxjsUtils';
 import { IInsightsDialogService } from 'sql/parts/insights/common/interfaces';
 import { ICapabilitiesService } from 'sql/services/capabilities/capabilitiesService';
 import { IConnectionProfile } from 'sql/parts/connection/common/interfaces';
-import { AngularEventType, IAngularEvent } from 'sql/services/angularEventing/angularEventingService';
+import { AngularEventType, IAngularEvent, IAngularEventingService } from 'sql/services/angularEventing/angularEventingService';
+import { IDashboardTab } from 'sql/platform/dashboard/common/dashboardRegistry';
+import { TabSettingConfig } from 'sql/parts/dashboard/common/dashboardWidget';
+import { IDashboardWebviewService } from 'sql/services/dashboardWebview/common/dashboardWebviewService';
+import { AngularDisposable } from 'sql/base/common/lifecycle';
+import { ConnectionContextkey } from 'sql/parts/connection/common/connectionContextKey';
 
-import { ProviderMetadata, DatabaseInfo, SimpleExecuteResult } from 'data';
+import { ProviderMetadata, DatabaseInfo, SimpleExecuteResult } from 'sqlops';
 
 /* VS imports */
 import { IWorkbenchThemeService } from 'vs/workbench/services/themes/common/workbenchThemeService';
@@ -30,13 +35,17 @@ import { IContextMenuService, IContextViewService } from 'vs/platform/contextvie
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
 import { IDisposable } from 'vs/base/common/lifecycle';
 import { IConfigurationService, ConfigurationTarget } from 'vs/platform/configuration/common/configuration';
-import { ConfigurationEditingService, IConfigurationValue } from 'vs/workbench/services/configuration/node/configurationEditingService'
+import { ConfigurationEditingService, IConfigurationValue } from 'vs/workbench/services/configuration/node/configurationEditingService';
 import { IMessageService } from 'vs/platform/message/common/message';
 import { IWorkspaceContextService } from 'vs/platform/workspace/common/workspace';
 import { IStorageService } from 'vs/platform/storage/common/storage';
 import Event, { Emitter } from 'vs/base/common/event';
 import Severity from 'vs/base/common/severity';
 import * as nls from 'vs/nls';
+import { IPartService } from 'vs/workbench/services/part/common/partService';
+import { deepClone } from 'vs/base/common/objects';
+import { ICommandService } from 'vs/platform/commands/common/commands';
+import { IContextKeyService, RawContextKey, IContextKey } from 'vs/platform/contextkey/common/contextkey';
 
 const DASHBOARD_SETTINGS = 'dashboard';
 
@@ -62,11 +71,16 @@ export class SingleConnectionManagementService {
 
 	constructor(
 		private _connectionService: IConnectionManagementService,
-		private _uri: string
+		private _uri: string,
+		private _contextKey: ConnectionContextkey
 	) { }
 
 	public changeDatabase(name: string): Thenable<boolean> {
-		return this._connectionService.changeDatabase(this._uri, name);
+		return this._connectionService.changeDatabase(this._uri, name).then(e => {
+			// we need to update our context
+			this._contextKey.set(this.connectionInfo.connectionProfile);
+			return e;
+		});
 	}
 
 	public get connectionInfo(): ConnectionManagementInfo {
@@ -105,28 +119,34 @@ export class SingleQueryManagementService {
 	usage of a widget.
 */
 @Injectable()
-export class DashboardServiceInterface implements OnDestroy {
+export class DashboardServiceInterface extends AngularDisposable {
 	private _uniqueSelector: string;
 	private _uri: string;
 	private _bootstrapParams: DashboardComponentParams;
-	private _disposables: IDisposable[] = [];
 
-	/* Services */
+	/* Static Services */
+	private _themeService = this._bootstrapService.themeService;
+	private _contextMenuService = this._bootstrapService.contextMenuService;
+	private _instantiationService = this._bootstrapService.instantiationService;
+	private _configService = this._bootstrapService.configurationService;
+	private _insightsDialogService = this._bootstrapService.insightsDialogService;
+	private _contextViewService = this._bootstrapService.contextViewService;
+	private _messageService = this._bootstrapService.messageService;
+	private _workspaceContextService = this._bootstrapService.workspaceContextService;
+	private _storageService = this._bootstrapService.storageService;
+	private _capabilitiesService = this._bootstrapService.capabilitiesService;
+	private _configurationEditingService = this._bootstrapService.configurationEditorService;
+	private _commandService = this._bootstrapService.commandService;
+	private _dashboardWebviewService = this._bootstrapService.dashboardWebviewService;
+	private _partService = this._bootstrapService.partService;
+	private _angularEventingService = this._bootstrapService.angularEventingService;
+
+	/* Special Services */
 	private _metadataService: SingleConnectionMetadataService;
 	private _connectionManagementService: SingleConnectionManagementService;
-	private _themeService: IWorkbenchThemeService;
-	private _contextMenuService: IContextMenuService;
-	private _instantiationService: IInstantiationService;
 	private _adminService: SingleAdminService;
 	private _queryManagementService: SingleQueryManagementService;
-	private _configService: IConfigurationService;
-	private _insightsDialogService: IInsightsDialogService;
-	private _contextViewService: IContextViewService;
-	private _messageService: IMessageService;
-	private _workspaceContextService: IWorkspaceContextService;
-	private _storageService: IStorageService;
-	private _capabilitiesService: ICapabilitiesService;
-	private _configurationEditingService: ConfigurationEditingService;
+	private _contextKeyService: IContextKeyService;
 
 	private _updatePage = new Emitter<void>();
 	public readonly onUpdatePage: Event<void> = this._updatePage.event;
@@ -134,25 +154,27 @@ export class DashboardServiceInterface implements OnDestroy {
 	private _onDeleteWidget = new Emitter<string>();
 	public readonly onDeleteWidget: Event<string> = this._onDeleteWidget.event;
 
+	private _onPinUnpinTab = new Emitter<TabSettingConfig>();
+	public readonly onPinUnpinTab: Event<TabSettingConfig> = this._onPinUnpinTab.event;
+
+	private _onAddNewTabs = new Emitter<Array<IDashboardTab>>();
+	public readonly onAddNewTabs: Event<Array<IDashboardTab>> = this._onAddNewTabs.event;
+
+	private _onCloseTab = new Emitter<string>();
+	public readonly onCloseTab: Event<string> = this._onCloseTab.event;
+
+	private _dashboardContextKey = new RawContextKey<string>('dashboardContext', undefined);
+	public dashboardContextKey: IContextKey<string>;
+
+	private _connectionContextKey: ConnectionContextkey;
+
+	private _numberOfPageNavigations = 0;
+
 	constructor(
 		@Inject(BOOTSTRAP_SERVICE_ID) private _bootstrapService: IBootstrapService,
 		@Inject(forwardRef(() => Router)) private _router: Router,
 	) {
-		this._themeService = this._bootstrapService.themeService;
-		this._contextMenuService = this._bootstrapService.contextMenuService;
-		this._instantiationService = this._bootstrapService.instantiationService;
-		this._configService = this._bootstrapService.configurationService;
-		this._insightsDialogService = this._bootstrapService.insightsDialogService;
-		this._contextViewService = this._bootstrapService.contextViewService;
-		this._messageService = this._bootstrapService.messageService;
-		this._workspaceContextService = this._bootstrapService.workspaceContextService;
-		this._storageService = this._bootstrapService.storageService;
-		this._capabilitiesService = this._bootstrapService.capabilitiesService;
-		this._configurationEditingService = this._bootstrapService.configurationEditorService;
-	}
-
-	ngOnDestroy() {
-		this._disposables.forEach((item) => item.dispose());
+		super();
 	}
 
 	public get messageService(): IMessageService {
@@ -171,6 +193,10 @@ export class DashboardServiceInterface implements OnDestroy {
 		return this._connectionManagementService;
 	}
 
+	public get commandService(): ICommandService {
+		return this._commandService;
+	}
+
 	public get themeService(): IWorkbenchThemeService {
 		return this._themeService;
 	}
@@ -181,6 +207,18 @@ export class DashboardServiceInterface implements OnDestroy {
 
 	public get instantiationService(): IInstantiationService {
 		return this._instantiationService;
+	}
+
+	public get dashboardWebviewService(): IDashboardWebviewService {
+		return this._dashboardWebviewService;
+	}
+
+	public get partService(): IPartService {
+		return this._partService;
+	}
+
+	public get contextKeyService(): IContextKeyService {
+		return this._contextKeyService;
 	}
 
 	public get adminService(): SingleAdminService {
@@ -207,6 +245,10 @@ export class DashboardServiceInterface implements OnDestroy {
 		return this._capabilitiesService;
 	}
 
+	public get angularEventingService(): IAngularEventingService {
+		return this._angularEventingService;
+	}
+
 	/**
 	 * Set the selector for this dashboard instance, should only be set once
 	 */
@@ -216,7 +258,10 @@ export class DashboardServiceInterface implements OnDestroy {
 	}
 
 	private _getbootstrapParams(): void {
-		this._bootstrapParams = this._bootstrapService.getBootstrapParams(this._uniqueSelector);
+		this._bootstrapParams = this._bootstrapService.getBootstrapParams<DashboardComponentParams>(this._uniqueSelector);
+		this._contextKeyService = this._bootstrapParams.scopedContextService;
+		this._connectionContextKey = this._bootstrapParams.connectionContextKey;
+		this.dashboardContextKey = this._dashboardContextKey.bindTo(this._contextKeyService);
 		this.uri = this._bootstrapParams.ownerUri;
 	}
 
@@ -227,10 +272,10 @@ export class DashboardServiceInterface implements OnDestroy {
 	private set uri(uri: string) {
 		this._uri = uri;
 		this._metadataService = new SingleConnectionMetadataService(this._bootstrapService.metadataService, this._uri);
-		this._connectionManagementService = new SingleConnectionManagementService(this._bootstrapService.connectionManagementService, this._uri);
+		this._connectionManagementService = new SingleConnectionManagementService(this._bootstrapService.connectionManagementService, this._uri, this._connectionContextKey);
 		this._adminService = new SingleAdminService(this._bootstrapService.adminService, this._uri);
 		this._queryManagementService = new SingleQueryManagementService(this._bootstrapService.queryManagementService, this._uri);
-		this._disposables.push(toDisposableSubscription(this._bootstrapService.angularEventingService.onAngularEvent(this._uri, (event) => this.handleDashboardEvent(event))));
+		this._register(toDisposableSubscription(this._bootstrapService.angularEventingService.onAngularEvent(this._uri, (event) => this.handleDashboardEvent(event))));
 	}
 
 	/**
@@ -246,16 +291,30 @@ export class DashboardServiceInterface implements OnDestroy {
 	}
 
 	/**
+	 * Gets the number of page navigation
+	 */
+	public getNumberOfPageNavigations(): number {
+		return this._numberOfPageNavigations;
+	}
+
+	/**
+	 * Handle on page navigation
+	 */
+	public handlePageNavigation(): void {
+		this._numberOfPageNavigations++;
+	}
+
+	/**
 	 * Get settings for given string
 	 * @param type string of setting to get from dashboard settings; i.e dashboard.{type}
 	 */
 	public getSettings<T>(type: string): T {
 		let config = this._configService.getValue<T>([DASHBOARD_SETTINGS, type].join('.'));
-		return config;
+		return deepClone(config);
 	}
 
-	public writeSettings(key: string, value: any, target: ConfigurationTarget) {
-		this._configurationEditingService.writeConfiguration(target, { key: DASHBOARD_SETTINGS + '.' + key + '.widgets', value });
+	public writeSettings(type: string, value: any, target: ConfigurationTarget) {
+		this._configurationEditingService.writeConfiguration(target, { key: [DASHBOARD_SETTINGS, type].join('.'), value });
 	}
 
 	private handleDashboardEvent(event: IAngularEvent): void {
@@ -283,6 +342,15 @@ export class DashboardServiceInterface implements OnDestroy {
 				break;
 			case AngularEventType.DELETE_WIDGET:
 				this._onDeleteWidget.fire(event.payload.id);
+				break;
+			case AngularEventType.PINUNPIN_TAB:
+				this._onPinUnpinTab.fire(event.payload);
+				break;
+			case AngularEventType.NEW_TABS:
+				this._onAddNewTabs.fire(event.payload.dashboardTabs);
+				break;
+			case AngularEventType.CLOSE_TAB:
+				this._onCloseTab.fire(event.payload.id);
 		}
 	}
 }

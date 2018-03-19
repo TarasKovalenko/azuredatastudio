@@ -8,6 +8,7 @@ import 'vs/css!sql/media/objectTypes/objecttypes';
 import 'vs/css!sql/media/icons/common-icons';
 
 import * as dom from 'vs/base/browser/dom';
+import { localize } from 'vs/nls';
 import { ConnectionProfileGroup } from 'sql/parts/connection/common/connectionProfileGroup';
 import { ConnectionProfile } from 'sql/parts/connection/common/connectionProfile';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
@@ -24,11 +25,11 @@ import { TreeNode } from 'sql/parts/registeredServer/common/treeNode';
  */
 export class ServerTreeRenderer implements IRenderer {
 
-	public static CONNECTION_HEIGHT = 28;
+	public static CONNECTION_HEIGHT = 25;
 	public static CONNECTION_GROUP_HEIGHT = 38;
 	private static CONNECTION_TEMPLATE_ID = 'connectionProfile';
 	private static CONNECTION_GROUP_TEMPLATE_ID = 'connectionProfileGroup';
-	public static OBJECTEXPLORER_HEIGHT = 28;
+	public static OBJECTEXPLORER_HEIGHT = 25;
 	private static OBJECTEXPLORER_TEMPLATE_ID = 'objectExplorer';
 	/**
 	 * _isCompact is used to render connections tiles with and without the action buttons.
@@ -146,9 +147,10 @@ export class ServerTreeRenderer implements IRenderer {
 			}
 		}
 
-		let databaseName = connection.databaseName ? connection.databaseName : '<default>';
-		let userName = connection.userName ? connection.userName : "Windows Authentication";
-		let label = connection.serverName + ', ' + databaseName + ' (' + userName + ')';
+		let label = connection.title;
+		if (!connection.isConnectionOptionsValid) {
+			label = localize('loading', 'Loading...');
+		}
 
 		templateData.label.textContent = label;
 		templateData.root.title = label;

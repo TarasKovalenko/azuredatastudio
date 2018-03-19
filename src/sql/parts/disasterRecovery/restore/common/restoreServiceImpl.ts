@@ -5,7 +5,7 @@
 
 'use strict';
 import { IConnectionManagementService } from 'sql/parts/connection/common/connectionManagement';
-import * as data from 'data';
+import * as sqlops from 'sqlops';
 import { TPromise } from 'vs/base/common/winjs.base';
 import * as Constants from 'sql/common/constants';
 import * as TelemetryKeys from 'sql/common/telemetryKeys';
@@ -22,11 +22,14 @@ import { MssqlRestoreInfo } from 'sql/parts/disasterRecovery/restore/mssqlRestor
 import { IConnectionProfile } from 'sql/parts/connection/common/interfaces';
 import { ProviderConnectionInfo } from 'sql/parts/connection/common/providerConnectionInfo';
 import * as Utils from 'sql/parts/connection/common/utils';
+import { IObjectExplorerService } from 'sql/parts/registeredServer/common/objectExplorerService';
+import { ITaskService } from 'sql/parts/taskHistory/common/taskService';
+import { TaskStatus, TaskNode } from 'sql/parts/taskHistory/common/taskNode';
 
 export class RestoreService implements IRestoreService {
 
 	public _serviceBrand: any;
-	private _providers: { [handle: string]: data.RestoreProvider; } = Object.create(null);
+	private _providers: { [handle: string]: sqlops.RestoreProvider; } = Object.create(null);
 
 	constructor(
 		@IConnectionManagementService private _connectionService: IConnectionManagementService,
@@ -37,8 +40,8 @@ export class RestoreService implements IRestoreService {
 	/**
 	 * Gets restore config Info
 	 */
-	getRestoreConfigInfo(connectionUri: string): Thenable<data.RestoreConfigInfo> {
-		return new Promise<data.RestoreConfigInfo>((resolve, reject) => {
+	getRestoreConfigInfo(connectionUri: string): Thenable<sqlops.RestoreConfigInfo> {
+		return new Promise<sqlops.RestoreConfigInfo>((resolve, reject) => {
 			let providerResult = this.getProvider(connectionUri);
 			if (providerResult) {
 				providerResult.provider.getRestoreConfigInfo(connectionUri).then(result => {
@@ -55,8 +58,8 @@ export class RestoreService implements IRestoreService {
 	/**
 	 * Restore a data source using a backup file or database
 	 */
-	restore(connectionUri: string, restoreInfo: data.RestoreInfo): Thenable<data.RestoreResponse> {
-		return new Promise<data.RestoreResponse>((resolve, reject) => {
+	restore(connectionUri: string, restoreInfo: sqlops.RestoreInfo): Thenable<sqlops.RestoreResponse> {
+		return new Promise<sqlops.RestoreResponse>((resolve, reject) => {
 			let providerResult = this.getProvider(connectionUri);
 			if (providerResult) {
 				TelemetryUtils.addTelemetry(this._telemetryService, TelemetryKeys.RestoreRequested, { provider: providerResult.providerName });
@@ -71,7 +74,7 @@ export class RestoreService implements IRestoreService {
 		});
 	}
 
-	private getProvider(connectionUri: string): { provider: data.RestoreProvider, providerName: string } {
+	private getProvider(connectionUri: string): { provider: sqlops.RestoreProvider, providerName: string } {
 		let providerId: string = this._connectionService.getProviderIdFromUri(connectionUri);
 		if (providerId) {
 			return { provider: this._providers[providerId], providerName: providerId };
@@ -83,8 +86,8 @@ export class RestoreService implements IRestoreService {
 	/**
 	 * Gets restore plan to do the restore operation on a database
 	 */
-	getRestorePlan(connectionUri: string, restoreInfo: data.RestoreInfo): Thenable<data.RestorePlanResponse> {
-		return new Promise<data.RestorePlanResponse>((resolve, reject) => {
+	getRestorePlan(connectionUri: string, restoreInfo: sqlops.RestoreInfo): Thenable<sqlops.RestorePlanResponse> {
+		return new Promise<sqlops.RestorePlanResponse>((resolve, reject) => {
 			let providerResult = this.getProvider(connectionUri);
 			if (providerResult) {
 				providerResult.provider.getRestorePlan(connectionUri, restoreInfo).then(result => {
@@ -102,7 +105,7 @@ export class RestoreService implements IRestoreService {
 	/**
 	 * Cancels a restore plan
 	 */
-	cancelRestorePlan(connectionUri: string, restoreInfo: data.RestoreInfo): Thenable<boolean> {
+	cancelRestorePlan(connectionUri: string, restoreInfo: sqlops.RestoreInfo): Thenable<boolean> {
 		return new Promise<boolean>((resolve, reject) => {
 			let providerResult = this.getProvider(connectionUri);
 			if (providerResult) {
@@ -121,7 +124,7 @@ export class RestoreService implements IRestoreService {
 	/**
 	 * Register a disaster recovery provider
 	 */
-	public registerProvider(providerId: string, provider: data.RestoreProvider): void {
+	public registerProvider(providerId: string, provider: sqlops.RestoreProvider): void {
 		this._providers[providerId] = provider;
 	}
 }
@@ -135,13 +138,17 @@ export class RestoreDialogController implements IRestoreDialogController {
 	private _ownerUri: string;
 	private _sessionId: string;
 	private readonly _restoreFeature = 'Restore';
+	private readonly _restoreTaskName: string = 'Restore Database';
+	private readonly _restoreCompleted: string = 'Completed';
 	private _optionValues: { [optionName: string]: any } = {};
 
 	constructor(
 		@IInstantiationService private _instantiationService: IInstantiationService,
 		@IRestoreService private _restoreService: IRestoreService,
 		@IConnectionManagementService private _connectionService: IConnectionManagementService,
-		@ICapabilitiesService private _capabilitiesService: ICapabilitiesService
+		@ICapabilitiesService private _capabilitiesService: ICapabilitiesService,
+		@IObjectExplorerService private _objectExplorerService: IObjectExplorerService,
+		@ITaskService private _taskService: ITaskService
 	) {
 	}
 
@@ -153,9 +160,29 @@ export class RestoreDialogController implements IRestoreDialogController {
 			restoreOption.taskExecutionMode = TaskExecutionMode.executeAndScript;
 		}
 
-		this._restoreService.restore(this._ownerUri, restoreOption);
-		let restoreDialog = this._restoreDialogs[this._currentProvider];
-		restoreDialog.close();
+		this._restoreService.restore(this._ownerUri, restoreOption).then(result => {
+			const self = this;
+			let connectionProfile = self._connectionService.getConnectionProfile(self._ownerUri);
+			let activeNode = self._objectExplorerService.getObjectExplorerNode(connectionProfile);
+			this._taskService.onTaskComplete(response => {
+				if (result.taskId === response.id && this.isSuccessfulRestore(response) && activeNode) {
+					self._objectExplorerService.refreshTreeNode(activeNode.getSession(), activeNode).then(result => {
+						self._objectExplorerService.getServerTreeView().refreshTree();
+					});
+				}
+			});
+			let restoreDialog = this._restoreDialogs[this._currentProvider];
+			restoreDialog.close();
+		});
+	}
+
+	private isSuccessfulRestore(response: TaskNode): boolean {
+		return (response.taskName === this._restoreTaskName &&
+			response.message === this._restoreCompleted &&
+			(response.status === TaskStatus.succeeded ||
+				response.status === TaskStatus.succeededWithWarning) &&
+			(response.taskExecutionMode === TaskExecutionMode.execute ||
+				response.taskExecutionMode === TaskExecutionMode.executeAndScript));
 	}
 
 	private handleMssqlOnValidateFile(overwriteTargetDatabase: boolean = false): void {
@@ -205,7 +232,7 @@ export class RestoreDialogController implements IRestoreDialogController {
 		});
 	}
 
-	private setRestoreOption(overwriteTargetDatabase: boolean = false): data.RestoreInfo {
+	private setRestoreOption(overwriteTargetDatabase: boolean = false): sqlops.RestoreInfo {
 		let restoreInfo = undefined;
 
 		let providerId: string = this.getCurrentProviderId();
@@ -236,10 +263,10 @@ export class RestoreDialogController implements IRestoreDialogController {
 		return restoreInfo;
 	}
 
-	private getRestoreOption(): data.ServiceOption[] {
-		let options: data.ServiceOption[] = [];
+	private getRestoreOption(): sqlops.ServiceOption[] {
+		let options: sqlops.ServiceOption[] = [];
 		let providerId: string = this.getCurrentProviderId();
-		let providerCapabilities = this._capabilitiesService.getCapabilities().find(c => c.providerName === providerId);
+		let providerCapabilities = this._capabilitiesService.getCapabilities(providerId);
 
 		if (providerCapabilities) {
 			let restoreMetadataProvider = providerCapabilities.features.find(f => f.featureName === this._restoreFeature);
@@ -309,7 +336,6 @@ export class RestoreDialogController implements IRestoreDialogController {
 						let restoreDialog = this._restoreDialogs[this._currentProvider] as OptionsDialog;
 						restoreDialog.open(this.getRestoreOption(), this._optionValues);
 					}
-
 					resolve(result);
 				}, error => {
 					reject(error);

@@ -3,18 +3,19 @@
  *  Licensed under the Source EULA. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { Registry } from 'vs/platform/registry/common/platform';
 import { IJSONSchema } from 'vs/base/common/jsonSchema';
-import { Extensions, IDashboardWidgetRegistry } from 'sql/platform/dashboard/common/widgetRegistry';
 import * as nls from 'vs/nls';
-
-let widgetRegistry = <IDashboardWidgetRegistry>Registry.as(Extensions.DashboardWidgetContribution);
+import { generateDashboardWidgetSchema, generateDashboardTabSchema } from './dashboardPageContribution';
 
 export const databaseDashboardPropertiesSchema: IJSONSchema = {
 	description: nls.localize('dashboardDatabaseProperties', 'Enable or disable the properties widget'),
 	default: true,
 	oneOf: <IJSONSchema[]>[
 		{ type: 'boolean' },
+		{
+			type: 'string',
+			enum: ['collapsed']
+		},
 		{
 			type: 'array',
 			items: {
@@ -85,58 +86,7 @@ export const databaseDashboardPropertiesSchema: IJSONSchema = {
 export const databaseDashboardSettingSchema: IJSONSchema = {
 	type: ['array'],
 	description: nls.localize('dashboardDatabase', 'Customizes the database dashboard page'),
-	items: <IJSONSchema>{
-		type: 'object',
-		properties: {
-			name: {
-				type: 'string'
-			},
-			icon: {
-				type: 'string'
-			},
-			provider: {
-				anyOf: [
-					'string',
-					{
-						type: 'array',
-						items: 'string'
-					}
-				]
-			},
-			edition: {
-				anyOf: [
-					'number',
-					{
-						type: 'array',
-						items: 'number'
-					}
-				]
-			},
-			gridItemConfig: {
-				type: 'object',
-				properties: {
-					sizex: {
-						type: 'number'
-					},
-					sizey: {
-						type: 'number'
-					},
-					col: {
-						type: 'number'
-					},
-					row: {
-						type: 'number'
-					}
-				}
-			},
-			widget: {
-				type: 'object',
-				properties: widgetRegistry.databaseWidgetSchema.properties,
-				minItems: 1,
-				maxItems: 1
-			}
-		}
-	},
+	items: generateDashboardWidgetSchema('database'),
 	default: [
 		{
 			name: 'Tasks',
@@ -145,7 +95,7 @@ export const databaseDashboardSettingSchema: IJSONSchema = {
 				sizey: 1
 			},
 			widget: {
-				'tasks-widget': {}
+				'tasks-widget': [{ name: 'backup', when: '!mssql:iscloud' }, { name: 'restore', when: '!mssql:iscloud' }, 'configureDashboard', 'newQuery']
 			}
 		},
 		{
@@ -160,5 +110,14 @@ export const databaseDashboardSettingSchema: IJSONSchema = {
 	]
 };
 
+export const databaseDashboardTabsSchema: IJSONSchema = {
+	type: ['array'],
+	description: nls.localize('dashboardDatabaseTabs', 'Customizes the database dashboard tabs'),
+	items: generateDashboardTabSchema('database'),
+	default: [
+	]
+};
+
 export const DATABASE_DASHBOARD_SETTING = 'dashboard.database.widgets';
 export const DATABASE_DASHBOARD_PROPERTIES = 'dashboard.database.properties';
+export const DATABASE_DASHBOARD_TABS = 'dashboard.database.tabs';

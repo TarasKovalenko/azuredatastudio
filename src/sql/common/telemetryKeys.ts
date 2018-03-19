@@ -23,6 +23,7 @@ export const RunQueryStatement = 'RunQueryStatement';
 export const CancelQuery = 'CancelQuery';
 export const NewQuery = 'NewQuery';
 export const FirewallRuleRequested = 'FirewallRuleCreated';
+export const DashboardNavigated = 'DashboardNavigated';
 
 
 // Telemetry Properties
@@ -40,3 +41,4 @@ export const ServerGroups = 'ServerGroups';
 export const Accounts = 'Accounts';
 export const FireWallRule = 'FirewallRule';
 export const AutoOAuth = 'AutoOAuth';
+export const AddNewDashboardTab = 'AddNewDashboardTab';

@@ -6,20 +6,20 @@
 'use strict';
 import * as OptionsDialogHelper from 'sql/base/browser/ui/modal/optionsDialogHelper';
 import { InputBox } from 'vs/base/browser/ui/inputbox/inputBox';
-import data = require('data');
+import * as sqlops from 'sqlops';
 import { Builder, $ } from 'vs/base/browser/builder';
 import * as TypeMoq from 'typemoq';
 import * as assert from 'assert';
-import { ServiceOptionType, ServiceOptionTypeNames } from 'sql/workbench/api/common/sqlExtHostTypes';
+import { ServiceOptionType } from 'sql/workbench/api/common/sqlExtHostTypes';
 
 suite('Advanced options helper tests', () => {
 	var possibleInputs: string[];
 	let options: { [name: string]: any };
-	var categoryOption: data.ServiceOption;
-	var booleanOption: data.ServiceOption;
-	var numberOption: data.ServiceOption;
-	var stringOption: data.ServiceOption;
-	var defaultGroupOption: data.ServiceOption;
+	var categoryOption: sqlops.ServiceOption;
+	var booleanOption: sqlops.ServiceOption;
+	var numberOption: sqlops.ServiceOption;
+	var stringOption: sqlops.ServiceOption;
+	var defaultGroupOption: sqlops.ServiceOption;
 	var isValid: boolean;
 	var inputValue: string;
 	var inputBox: TypeMoq.Mock<InputBox>;
@@ -41,7 +41,7 @@ suite('Advanced options helper tests', () => {
 			],
 			defaultValue: null,
 			isRequired: false,
-			valueType: <any>ServiceOptionTypeNames.category,
+			valueType: ServiceOptionType.category,
 			objectType: undefined,
 			isArray: undefined
 		};
@@ -54,7 +54,7 @@ suite('Advanced options helper tests', () => {
 			categoryValues: null,
 			defaultValue: null,
 			isRequired: false,
-			valueType: <any>ServiceOptionTypeNames.boolean,
+			valueType: ServiceOptionType.boolean,
 			objectType: undefined,
 			isArray: undefined
 		};
@@ -67,7 +67,7 @@ suite('Advanced options helper tests', () => {
 			categoryValues: null,
 			defaultValue: '15',
 			isRequired: false,
-			valueType: <any>ServiceOptionTypeNames.number,
+			valueType: ServiceOptionType.number,
 			objectType: undefined,
 			isArray: undefined
 		};
@@ -80,7 +80,7 @@ suite('Advanced options helper tests', () => {
 			categoryValues: null,
 			defaultValue: null,
 			isRequired: false,
-			valueType: <any>ServiceOptionTypeNames.string,
+			valueType: ServiceOptionType.string,
 			objectType: undefined,
 			isArray: undefined
 		};
@@ -93,7 +93,7 @@ suite('Advanced options helper tests', () => {
 			categoryValues: null,
 			defaultValue: null,
 			isRequired: false,
-			valueType: <any>ServiceOptionTypeNames.string,
+			valueType: ServiceOptionType.string,
 			objectType: undefined,
 			isArray: undefined
 		};

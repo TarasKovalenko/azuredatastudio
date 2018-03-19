@@ -110,7 +110,9 @@ const AssetType = {
 	Manifest: 'Microsoft.VisualStudio.Code.Manifest',
 	VSIX: 'Microsoft.VisualStudio.Services.VSIXPackage',
 	License: 'Microsoft.VisualStudio.Services.Content.License',
-	Repository: 'Microsoft.VisualStudio.Services.Links.Source'
+	Repository: 'Microsoft.VisualStudio.Services.Links.Source',
+	// {{SQL CARBON EDIT}}
+	DownloadPage: 'Microsoft.SQLOps.DownloadPage'
 };
 
 const PropertyType = {
@@ -154,6 +156,8 @@ class Query {
 	get sortBy(): number { return this.state.sortBy; }
 	get sortOrder(): number { return this.state.sortOrder; }
 	get flags(): number { return this.state.flags; }
+	// {{SQL CARBON EDIT}}
+	get criteria(): ICriterium[] { return this.state.criteria ? this.state.criteria : []; }
 
 	withPage(pageNumber: number, pageSize: number = this.state.pageSize): Query {
 		return new Query(assign({}, this.state, { pageNumber, pageSize }));
@@ -204,6 +208,12 @@ function getStatistic(statistics: IRawGalleryExtensionStatistics[], name: string
 function getVersionAsset(version: IRawGalleryExtensionVersion, type: string): IGalleryExtensionAsset {
 	const result = version.files.filter(f => f.assetType === type)[0];
 
+	// {{SQL CARBON EDIT}}
+	let uriFromSource: string = undefined;
+	if (result) {
+		uriFromSource = result.source;
+	}
+
 	if (type === AssetType.Repository) {
 		if (version.properties) {
 			const results = version.properties.filter(p => p.key === type);
@@ -235,15 +245,26 @@ function getVersionAsset(version: IRawGalleryExtensionVersion, type: string): IG
 
 	if (type === AssetType.VSIX) {
 		return {
-			uri: `${version.fallbackAssetUri}/${type}?redirect=true&install=true`,
+			// {{SQL CARBON EDIT}}
+			uri: uriFromSource || `${version.fallbackAssetUri}/${type}?redirect=true&install=true`,
 			fallbackUri: `${version.fallbackAssetUri}/${type}?install=true`
 		};
 	}
 
-	return {
-		uri: `${version.assetUri}/${type}`,
-		fallbackUri: `${version.fallbackAssetUri}/${type}`
-	};
+	// {{SQL CARBON EDIT}}
+	if (version.assetUri) {
+		return {
+			uri: `${version.assetUri}/${type}`,
+			fallbackUri: `${version.fallbackAssetUri}/${type}`
+		};
+	} else {
+		return {
+			uri: uriFromSource,
+			fallbackUri: `${version.fallbackAssetUri}/${type}`
+		};
+	}
+
+
 }
 
 function getDependencies(version: IRawGalleryExtensionVersion): string[] {
@@ -268,6 +289,8 @@ function toExtension(galleryExtension: IRawGalleryExtension, extensionsGalleryUr
 		readme: getVersionAsset(version, AssetType.Details),
 		changelog: getVersionAsset(version, AssetType.Changelog),
 		download: getVersionAsset(version, AssetType.VSIX),
+		// {{SQL CARBON EDIT}}
+		downloadPage: getVersionAsset(version, AssetType.DownloadPage),
 		icon: getVersionAsset(version, AssetType.Icon),
 		license: getVersionAsset(version, AssetType.License),
 		repository: getVersionAsset(version, AssetType.Repository),
@@ -336,7 +359,8 @@ export class ExtensionGalleryService implements IExtensionGalleryService {
 	}
 
 	private api(path = ''): string {
-		return `${this.extensionsGalleryUrl}${path}`;
+		// {{SQL CARBON EDIT}}
+		return `${this.extensionsGalleryUrl}`;
 	}
 
 	isEnabled(): boolean {
@@ -417,6 +441,30 @@ export class ExtensionGalleryService implements IExtensionGalleryService {
 		});
 	}
 
+	// {{SQL CARBON EDIT}}
+	/**
+	 * The result of querying the gallery returns all the extensions because it's only reading a static file.
+	 * So this method should apply all the filters and return the actual result
+	 * @param query
+	 * @param galleryExtensions
+	 */
+	private createQueryResult(query: Query, galleryExtensions: IRawGalleryExtension[]): { galleryExtensions: IRawGalleryExtension[], total: number; } {
+		let filteredExtensions = galleryExtensions;
+		if (query.criteria) {
+			const ids = query.criteria.filter(x => x.filterType === FilterType.ExtensionId).map(v => v.value.toLocaleLowerCase());
+			if (ids && ids.length > 0) {
+					filteredExtensions = filteredExtensions.filter(e => e.extensionId && ids.includes(e.extensionId.toLocaleLowerCase()));
+			}
+			const names = query.criteria.filter(x => x.filterType === FilterType.ExtensionName).map(v => v.value.toLocaleLowerCase());
+			if (names && names.length > 0) {
+					filteredExtensions = filteredExtensions.filter(e => e.extensionName && e.publisher.publisherName && names.includes(`${e.publisher.publisherName.toLocaleLowerCase()}.${e.extensionName.toLocaleLowerCase()}`));
+			}
+		}
+
+		let actualTotal = filteredExtensions.length;
+		return { galleryExtensions: filteredExtensions, total: actualTotal };
+	}
+
 	private queryGallery(query: Query): TPromise<{ galleryExtensions: IRawGalleryExtension[], total: number; }> {
 		return this.commonHeadersPromise.then(commonHeaders => {
 			const data = JSON.stringify(query.raw);
@@ -428,7 +476,8 @@ export class ExtensionGalleryService implements IExtensionGalleryService {
 			});
 
 			return this.requestService.request({
-				type: 'POST',
+				// {{SQL CARBON EDIT}}
+				type: 'GET',
 				url: this.api('/extensionquery'),
 				data,
 				headers
@@ -444,7 +493,10 @@ export class ExtensionGalleryService implements IExtensionGalleryService {
 					const resultCount = r.resultMetadata && r.resultMetadata.filter(m => m.metadataType === 'ResultCount')[0];
 					const total = resultCount && resultCount.metadataItems.filter(i => i.name === 'TotalCount')[0].count || 0;
 
-					return { galleryExtensions, total };
+					// {{SQL CARBON EDIT}}
+					let filteredExtensionsResult = this.createQueryResult(query, galleryExtensions);
+
+					return { galleryExtensions: filteredExtensionsResult.galleryExtensions, total: filteredExtensionsResult.total };
 				});
 			});
 		});
@@ -538,7 +590,9 @@ export class ExtensionGalleryService implements IExtensionGalleryService {
 						if (rawVersion) {
 							extension.properties.dependencies = getDependencies(rawVersion);
 							extension.properties.engine = getEngine(rawVersion);
+							// {{SQL CARBON EDIT}}
 							extension.assets.download = getVersionAsset(rawVersion, AssetType.VSIX);
+							extension.assets.downloadPage = getVersionAsset(rawVersion, AssetType.DownloadPage);
 							extension.version = rawVersion.version;
 							return extension;
 						}

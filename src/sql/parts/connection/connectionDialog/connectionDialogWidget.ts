@@ -56,6 +56,7 @@ export class ConnectionDialogWidget extends Modal {
 	private _recentConnectionTree: ITree;
 	private _savedConnectionTree: ITree;
 	private $connectionUIContainer: Builder;
+	private _databaseDropdownExpanded: boolean;
 
 	private _panel: TabbedPanel;
 	private _recentConnectionTabId: PanelTabIdentifier;
@@ -183,8 +184,8 @@ export class ConnectionDialogWidget extends Modal {
 	public render() {
 		super.render();
 		attachModalDialogStyler(this, this._themeService);
-		let connectLabel = localize('connect', 'Connect');
-		let cancelLabel = localize('cancel', 'Cancel');
+		let connectLabel = localize('connectionDialog.connect', 'Connect');
+		let cancelLabel = localize('connectionDialog.cancel', 'Cancel');
 		this._connectButton = this.addFooterButton(connectLabel, () => this.connect());
 		this._connectButton.enabled = false;
 		this._closeButton = this.addFooterButton(cancelLabel, () => this.cancel());
@@ -244,7 +245,9 @@ export class ConnectionDialogWidget extends Modal {
 
 	private cancel() {
 		this._onCancel.fire();
-		this.close();
+		if (!this._databaseDropdownExpanded) {
+			this.close();
+		}
 	}
 
 	public close() {
@@ -256,8 +259,8 @@ export class ConnectionDialogWidget extends Modal {
 
 		let confirm: IConfirmation = {
 			message: localize('clearRecentConnectionMessage', 'Are you sure you want to delete all the connections from the list?'),
-			primaryButton: localize('yes', 'Yes'),
-			secondaryButton: localize('no', 'No'),
+			primaryButton: localize('connectionDialog.yes', 'Yes'),
+			secondaryButton: localize('connectionDialog.no', 'No'),
 			type: 'question'
 		};
 
@@ -271,7 +274,7 @@ export class ConnectionDialogWidget extends Modal {
 			resolve(confirmed);
 		});
 
-			//this._messageService.confirm(confirm).then(confirmation => {
+		//this._messageService.confirm(confirm).then(confirmation => {
 		// 	if (!confirmation.confirmed) {
 		// 		return TPromise.as(false);
 		// 	} else {
@@ -450,6 +453,13 @@ export class ConnectionDialogWidget extends Modal {
 
 	public updateProvider(displayName: string) {
 		this._providerTypeSelectBox.selectWithOptionName(displayName);
-		this.onProviderTypeSelected(displayName);
+	}
+
+	public set databaseDropdownExpanded(val: boolean) {
+		this._databaseDropdownExpanded = val;
+	}
+
+	public get databaseDropdownExpanded(): boolean {
+		return this._databaseDropdownExpanded;
 	}
 }

@@ -28,6 +28,7 @@ import { ICapabilitiesService } from 'sql/services/capabilities/capabilitiesServ
 import { Button } from 'sql/base/browser/ui/button/button';
 import { attachButtonStyler } from 'sql/common/theme/styler';
 import Event, { Emitter } from 'vs/base/common/event';
+import { TreeNode, TreeItemCollapsibleState } from 'sql/parts/registeredServer/common/treeNode';
 
 const $ = builder.$;
 
@@ -59,6 +60,14 @@ export class ServerTreeView {
 			this);
 		this._treeSelectionHandler = this._instantiationService.createInstance(TreeSelectionHandler);
 		this._onSelectionOrFocusChange = new Emitter();
+		if (this._capabilitiesService) {
+			this._capabilitiesService.onCapabilitiesReady().then(() => {
+				if (this._connectionManagementService.hasRegisteredServers()) {
+					this.refreshTree();
+					this._treeSelectionHandler.onTreeActionStateChange(false);
+				}
+			});
+		}
 	}
 
 	/**
@@ -88,7 +97,7 @@ export class ServerTreeView {
 			this._activeConnectionsFilterAction.enabled = false;
 			this._buttonSection = $('div.button-section').appendTo(container);
 			var connectButton = new Button(this._buttonSection);
-			connectButton.label = localize('addConnection', 'Add Connection');
+			connectButton.label = localize('serverTree.addConnection', 'Add Connection');
 			this._toDispose.push(attachButtonStyler(connectButton, this._themeService));
 			this._toDispose.push(connectButton.onDidClick(() => {
 				this._connectionManagementService.showConnectionDialog();
@@ -134,23 +143,9 @@ export class ServerTreeView {
 			self.refreshTree();
 			let root = <ConnectionProfileGroup>this._tree.getInput();
 			if (root && !root.hasValidConnections) {
-
 				this._treeSelectionHandler.onTreeActionStateChange(true);
-				if (this._capabilitiesService) {
-					this._capabilitiesService.onCapabilitiesReady().then(() => {
-						self.refreshTree();
-						this._treeSelectionHandler.onTreeActionStateChange(false);
-						resolve();
-
-					}, error => {
-						reject(error);
-					});
-				} else {
-					self.refreshTree();
-					resolve();
-				}
+				resolve();
 			} else {
-
 				resolve();
 			}
 		});
@@ -432,6 +427,48 @@ export class ServerTreeView {
 	*/
 	public isFocused(): boolean {
 		return this._tree.isDOMFocused();
+	}
+
+	/**
+	 * Set whether the given element is expanded or collapsed
+	 */
+	public setExpandedState(element: TreeNode | ConnectionProfile, expandedState: TreeItemCollapsibleState): Thenable<void> {
+		if (expandedState === TreeItemCollapsibleState.Collapsed) {
+			return this._tree.collapse(element);
+		} else if (expandedState === TreeItemCollapsibleState.Expanded) {
+			return this._tree.expand(element);
+		}
+		return Promise.resolve();
+	}
+
+	/**
+	 * Reveal the given element in the tree
+	 */
+	public reveal(element: TreeNode | ConnectionProfile): Thenable<void> {
+		return this._tree.reveal(element);
+	}
+
+	/**
+	 * Select the given element in the tree and clear any other selections
+	 */
+	public setSelected(element: TreeNode | ConnectionProfile, selected: boolean, clearOtherSelections: boolean): Thenable<void> {
+		if (clearOtherSelections || (selected && clearOtherSelections !== false)) {
+			this._tree.clearSelection();
+		}
+		if (selected) {
+			this._tree.select(element);
+			return this._tree.reveal(element);
+		} else {
+			this._tree.deselect(element);
+			return Promise.resolve();
+		}
+	}
+
+	/**
+	 * Check if the given element in the tree is expanded
+	 */
+	public isExpanded(element: TreeNode | ConnectionProfile): boolean {
+		return this._tree.isExpanded(element);
 	}
 
 	/**

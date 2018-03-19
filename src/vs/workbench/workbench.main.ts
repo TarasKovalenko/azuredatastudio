@@ -68,8 +68,8 @@ import 'vs/workbench/parts/html/browser/html.contribution';
 // import 'vs/workbench/parts/welcome/walkThrough/electron-browser/walkThrough.contribution';
 
 import 'vs/workbench/parts/extensions/electron-browser/extensions.contribution';
-//import 'vs/workbench/parts/extensions/browser/extensionsQuickOpen';
-//import 'vs/workbench/parts/extensions/electron-browser/extensionsViewlet'; // can be packaged separately
+import 'vs/workbench/parts/extensions/browser/extensionsQuickOpen';
+import 'vs/workbench/parts/extensions/electron-browser/extensionsViewlet'; // can be packaged separately
 
 // import 'vs/workbench/parts/welcome/page/electron-browser/welcomePage.contribution';
 
@@ -153,12 +153,20 @@ import 'sql/parts/dashboard/widgets/insights/views/charts/types/scatterChart.con
 import 'sql/parts/dashboard/widgets/insights/views/charts/types/timeSeriesChart.contribution';
 import 'sql/parts/dashboard/widgets/insights/views/countInsight.contribution';
 import 'sql/parts/dashboard/widgets/insights/views/imageInsight.contribution';
+/* Tasks */
+import 'sql/workbench/common/actions.contribution';
 /* Widgets */
 import 'sql/parts/dashboard/widgets/insights/insightsWidget.contribution';
 import 'sql/parts/dashboard/widgets/explorer/explorerWidget.contribution';
 import 'sql/parts/dashboard/widgets/tasks/tasksWidget.contribution';
+import 'sql/parts/dashboard/widgets/webview/webviewWidget.contribution';
 import 'sql/parts/dashboard/dashboardConfig.contribution';
-/* Tasks */
-import 'sql/workbench/common/actions.contribution';
+/* Containers */
+import 'sql/parts/dashboard/containers/dashboardWebviewContainer.contribution';
+import 'sql/parts/dashboard/containers/dashboardGridContainer.contribution';
+import 'sql/parts/dashboard/containers/dashboardWidgetContainer.contribution';
+import 'sql/parts/dashboard/containers/dashboardContainer.contribution';
+import 'sql/parts/dashboard/containers/dashboardNavSection.contribution';
+import 'sql/parts/dashboard/common/dashboardTab.contribution';
 /* Extension Host */
 import 'sql/workbench/api/electron-browser/sqlExtensionHost.contribution';

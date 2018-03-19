@@ -57,6 +57,12 @@
 	background: url("server_page_inverse.svg") center center no-repeat;
 }
 
+.vs .icon.globalError,
+.vs-dark .icon.globalError,
+.hc-black .icon.globalError {
+	background: url("globalerror.svg") center center no-repeat;
+}
+
 .vs .icon.error,
 .vs-dark .icon.error,
 .hc-black .icon.error {
@@ -104,13 +110,16 @@
 	background-position: 2px center;
 }
 
-.vs .icon.close {
-	background-image: url('close.svg');
+.vs .icon.close,
+.vs .icon.remove {
+	background: url('close.svg') center center no-repeat !important;
 }
 
 .vs-dark .icon.close,
-.hc-black .icon.close {
-	background-image: url('close-dark.svg');
+.hc-black .icon.close,
+.vs-dark .icon.remove,
+.hc-black .icon.remove {
+	background: url('close_inverse.svg') center center no-repeat !important;
 }
 
 .vs .icon.filter {
@@ -122,14 +131,6 @@
 	background: url("filter_inverse.svg") center center no-repeat !important;
 }
 
-.vs .icon.remove {
-	background: url("remove.svg") center center no-repeat !important;
-}
-
-.vs-dark .icon.remove,
-.hc-black .icon.remove {
-	background: url("remove_inverse.svg") center center no-repeat !important;
-}
 
 .vs .icon.warning-badge,
 .vs-dark .icon.warning-badge,
@@ -153,6 +154,15 @@
 
 .vs .icon.toggle-more {
 	background: url('ellipsis.svg') center center no-repeat;
+}
+
+.hc-black .icon.new,
+.vs-dark .icon.new {
+	background: url('new_inverse.svg') center center no-repeat;
+}
+
+.vs .icon.new {
+	background: url('new.svg') center center no-repeat;
 }
 
 .hc-black .icon.new-query,
@@ -180,4 +190,22 @@
 
 .vs .icon.edit {
 	background: url('edit.svg') center center no-repeat;
+}
+
+.hc-black .icon.pin,
+.vs-dark .icon.pin {
+	background: url('pin_inverse.svg') center center no-repeat;
+}
+
+.vs .icon.pin {
+	background: url('pin.svg') center center no-repeat;
+}
+
+.hc-black .icon.unpin,
+.vs-dark .icon.unpin {
+	background: url('unpin_inverse.svg') center center no-repeat;
+}
+
+.vs .icon.unpin {
+	background: url('unpin.svg') center center no-repeat;
 }
