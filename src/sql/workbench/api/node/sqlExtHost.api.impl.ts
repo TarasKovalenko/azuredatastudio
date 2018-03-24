@@ -28,7 +28,6 @@ import { ExtHostConfiguration } from 'vs/workbench/api/node/extHostConfiguration
 import { ExtHostModalDialogs } from 'sql/workbench/api/node/extHostModalDialog';
 import { ExtHostTasks } from 'sql/workbench/api/node/extHostTasks';
 import { ILogService } from 'vs/platform/log/common/log';
-import { IExtensionApiFactory } from 'vs/workbench/api/node/extHost.api.impl';
 import { ExtHostDashboardWebviews } from 'sql/workbench/api/node/extHostDashboardWebview';
 import { ExtHostConnectionManagement } from 'sql/workbench/api/node/extHostConnectionManagement';
 import { ExtHostDashboard } from 'sql/workbench/api/node/extHostDashboard';
@@ -255,6 +254,10 @@ export function createApiFactory(
 				return extHostDataProvider.$registerAdminServicesProvider(provider);
 			};
 
+			let registerAgentServicesProvider = (provider: sqlops.AgentServicesProvider): vscode.Disposable => {
+				return extHostDataProvider.$registerAgentServiceProvider(provider);
+			};
+
 			// namespace: dataprotocol
 			const dataprotocol: typeof sqlops.dataprotocol = {
 				registerBackupProvider,
@@ -268,6 +271,7 @@ export function createApiFactory(
 				registerTaskServicesProvider,
 				registerQueryProvider,
 				registerAdminServicesProvider,
+				registerAgentServicesProvider,
 				registerCapabilitiesServiceProvider,
 				onDidChangeLanguageFlavor(listener: (e: sqlops.DidChangeLanguageFlavorParams) => any, thisArgs?: any, disposables?: extHostTypes.Disposable[]) {
 					return extHostDataProvider.onDidChangeLanguageFlavor(listener, thisArgs, disposables);

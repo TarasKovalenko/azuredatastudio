@@ -153,6 +153,7 @@ import 'sql/parts/dashboard/widgets/insights/views/charts/types/scatterChart.con
 import 'sql/parts/dashboard/widgets/insights/views/charts/types/timeSeriesChart.contribution';
 import 'sql/parts/dashboard/widgets/insights/views/countInsight.contribution';
 import 'sql/parts/dashboard/widgets/insights/views/imageInsight.contribution';
+import 'sql/parts/dashboard/widgets/insights/views/tableInsight.contribution';
 /* Tasks */
 import 'sql/workbench/common/actions.contribution';
 /* Widgets */
@@ -163,6 +164,7 @@ import 'sql/parts/dashboard/widgets/webview/webviewWidget.contribution';
 import 'sql/parts/dashboard/dashboardConfig.contribution';
 /* Containers */
 import 'sql/parts/dashboard/containers/dashboardWebviewContainer.contribution';
+import 'sql/parts/dashboard/containers/dashboardControlHostContainer.contribution';
 import 'sql/parts/dashboard/containers/dashboardGridContainer.contribution';
 import 'sql/parts/dashboard/containers/dashboardWidgetContainer.contribution';
 import 'sql/parts/dashboard/containers/dashboardContainer.contribution';
