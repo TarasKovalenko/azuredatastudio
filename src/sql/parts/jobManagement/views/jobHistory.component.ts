@@ -4,8 +4,8 @@
  *--------------------------------------------------------------------------------------------*/
 
 import 'vs/css!./jobHistory';
-
-import { OnInit, OnChanges, Component, Inject, Input, forwardRef, ElementRef, ChangeDetectorRef, ViewChild, ChangeDetectionStrategy } from '@angular/core';
+import 'vs/css!sql/media/icons/common-icons';
+import { OnInit, OnChanges, Component, Inject, Input, forwardRef, ElementRef, ChangeDetectorRef, ViewChild, ChangeDetectionStrategy, Injectable } from '@angular/core';
 import { AgentJobHistoryInfo, AgentJobInfo } from 'sqlops';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
 import { attachListStyler } from 'vs/platform/theme/common/styler';
@@ -19,12 +19,16 @@ import { PanelComponent } from 'sql/base/browser/ui/panel/panel.component';
 import { IBootstrapService, BOOTSTRAP_SERVICE_ID } from 'sql/services/bootstrap/bootstrapService';
 import { IJobManagementService } from '../common/interfaces';
 import { DashboardServiceInterface } from 'sql/parts/dashboard/services/dashboardServiceInterface.service';
+import { CommonServiceInterface } from 'sql/services/common/commonServiceInterface.service';
 import { AgentViewComponent } from 'sql/parts/jobManagement/agent/agentView.component';
 import { JobHistoryController, JobHistoryDataSource,
 	JobHistoryRenderer, JobHistoryFilter, JobHistoryModel, JobHistoryRow } from 'sql/parts/jobManagement/views/jobHistoryTree';
 import { JobStepsViewComponent } from 'sql/parts/jobManagement/views/jobStepsView.component';
 import { JobStepsViewRow } from './jobStepsViewTree';
 import { JobCacheObject } from 'sql/parts/jobManagement/common/jobManagementService';
+import { AgentJobUtilities } from '../common/agentJobUtilities';
+import { ITreeOptions } from 'vs/base/parts/tree/browser/tree';
+import { ScrollbarVisibility } from 'vs/base/common/scrollable';
 
 export const DASHBOARD_SELECTOR: string = 'jobhistory-component';
 
@@ -33,6 +37,7 @@ export const DASHBOARD_SELECTOR: string = 'jobhistory-component';
 	templateUrl: decodeURI(require.toUrl('./jobHistory.component.html')),
 	changeDetection: ChangeDetectionStrategy.OnPush
 })
+@Injectable()
 export class JobHistoryComponent extends Disposable implements OnInit {
 
 	private _jobManagementService: IJobManagementService;
@@ -56,12 +61,13 @@ export class JobHistoryComponent extends Disposable implements OnInit {
 	private _jobCacheObject: JobCacheObject;
 	private _notificationService: INotificationService;
 	private _agentJobInfo: AgentJobInfo;
+	private _noJobsAvailable: boolean = false;
 
 	constructor(
 		@Inject(BOOTSTRAP_SERVICE_ID) private bootstrapService: IBootstrapService,
 		@Inject(forwardRef(() => ElementRef)) el: ElementRef,
 		@Inject(forwardRef(() => ChangeDetectorRef)) private _cd: ChangeDetectorRef,
-		@Inject(forwardRef(() => DashboardServiceInterface)) private _dashboardService: DashboardServiceInterface,
+		@Inject(forwardRef(() => CommonServiceInterface)) private _dashboardService: CommonServiceInterface,
 		@Inject(forwardRef(() => AgentViewComponent)) private _agentViewComponent: AgentViewComponent
 	) {
 		super();
@@ -81,7 +87,6 @@ export class JobHistoryComponent extends Disposable implements OnInit {
 			this._jobCacheObject.serverName = serverName;
 			this._jobManagementService.addToCache(serverName, this._jobCacheObject);
 		}
-
 	}
 
 	ngOnInit() {
@@ -102,25 +107,15 @@ export class JobHistoryComponent extends Disposable implements OnInit {
 			} else {
 				tree.setFocus(element, payload);
 				tree.setSelection([element], payload);
-				self.agentJobHistoryInfo = self._treeController.jobHistories.filter(history => history.instanceId === element.instanceID)[0];
-				if (self.agentJobHistoryInfo) {
-					self.agentJobHistoryInfo.runDate = self.formatTime(self.agentJobHistoryInfo.runDate);
-					if (self.agentJobHistoryInfo.steps) {
-						self._stepRows = self.agentJobHistoryInfo.steps.map(step => {
-							let stepViewRow = new JobStepsViewRow();
-							stepViewRow.message = step.message;
-							stepViewRow.runStatus = JobHistoryRow.convertToStatusString(self.agentJobHistoryInfo.runStatus);
-							self._runStatus = stepViewRow.runStatus;
-							stepViewRow.stepName = step.stepName;
-							stepViewRow.stepID = step.stepId.toString();
-							return stepViewRow;
-						});
-						this._showSteps = true;
-					} else {
-						this._showSteps = false;
-					}
-					self._cd.detectChanges();
-				}
+					self.setStepsTree(element);
+			}
+			return true;
+		};
+		this._treeController.onKeyDown = (tree, event) => {
+			this._treeController.onKeyDownWrapper(tree, event);
+			let element = tree.getFocus();
+			if (element) {
+				self.setStepsTree(element);
 			}
 			return true;
 		};
@@ -129,7 +124,7 @@ export class JobHistoryComponent extends Disposable implements OnInit {
 			dataSource: this._treeDataSource,
 			filter: this._treeFilter,
 			renderer: this._treeRenderer
-		});
+		}, {verticalScrollMode: ScrollbarVisibility.Visible});
 		this._register(attachListStyler(this._tree, this.bootstrapService.themeService));
 		this._tree.layout(1024);
 	}
@@ -138,6 +133,7 @@ export class JobHistoryComponent extends Disposable implements OnInit {
 		this._agentJobInfo = this._agentViewComponent.agentJobInfo;
 		if (!this.agentJobInfo) {
 			this.agentJobInfo = this._agentJobInfo;
+			this.setActions();
 		}
 		if (this._isVisible === false && this._tableContainer.nativeElement.offsetParent !== null) {
 			this._isVisible = true;
@@ -145,13 +141,17 @@ export class JobHistoryComponent extends Disposable implements OnInit {
 			if (jobHistories && jobHistories.length > 0) {
 				const self = this;
 				if (this._jobCacheObject.prevJobID === this._agentViewComponent.jobId || jobHistories[0].jobId === this._agentViewComponent.jobId) {
+					this._showPreviousRuns = true;
 					this.buildHistoryTree(self, jobHistories);
 					this._cd.detectChanges();
 				}
 			} else if (jobHistories && jobHistories.length === 0 ){
 				this._showPreviousRuns = false;
 				this._showSteps = false;
+				this._noJobsAvailable = true;
 				this._cd.detectChanges();
+			} else {
+				this.loadHistory();
 			}
 			this._jobCacheObject.prevJobID = this._agentViewComponent.jobId;
 		} else if (this._isVisible === true && this._agentViewComponent.refresh) {
@@ -162,7 +162,7 @@ export class JobHistoryComponent extends Disposable implements OnInit {
 		}
 	}
 
-	loadHistory() {
+	private loadHistory() {
 		const self = this;
 		let ownerUri: string = this._dashboardService.connectionManagementService.connectionInfo.ownerUri;
 		this._jobManagementService.getJobHistory(ownerUri, this._agentViewComponent.jobId).then((result) => {
@@ -180,9 +180,32 @@ export class JobHistoryComponent extends Disposable implements OnInit {
 			} else {
 				self._showPreviousRuns = false;
 				self._showSteps = false;
-				this._cd.detectChanges();
+				self._cd.detectChanges();
 			}
 		});
+	}
+
+	private setStepsTree(element: any) {
+		const self = this;
+		self.agentJobHistoryInfo = self._treeController.jobHistories.filter(history => history.instanceId === element.instanceID)[0];
+		if (self.agentJobHistoryInfo) {
+			self.agentJobHistoryInfo.runDate = self.formatTime(self.agentJobHistoryInfo.runDate);
+			if (self.agentJobHistoryInfo.steps) {
+				self._stepRows = self.agentJobHistoryInfo.steps.map(step => {
+					let stepViewRow = new JobStepsViewRow();
+					stepViewRow.message = step.message;
+					stepViewRow.runStatus = AgentJobUtilities.convertToStatusString(step.runStatus);
+					self._runStatus = AgentJobUtilities.convertToStatusString(self.agentJobHistoryInfo.runStatus);
+					stepViewRow.stepName = step.stepName;
+					stepViewRow.stepID = step.stepId.toString();
+					return stepViewRow;
+				});
+				this._showSteps = true;
+			} else {
+				this._showSteps = false;
+			}
+			self._cd.detectChanges();
+		}
 	}
 
 	private buildHistoryTree(self: any, jobHistories: AgentJobHistoryInfo[]) {
@@ -247,13 +270,23 @@ export class JobHistoryComponent extends Disposable implements OnInit {
 	private convertToJobHistoryRow(historyInfo: AgentJobHistoryInfo): JobHistoryRow {
 		let jobHistoryRow = new JobHistoryRow();
 		jobHistoryRow.runDate = historyInfo.runDate;
-		jobHistoryRow.runStatus = JobHistoryRow.convertToStatusString(historyInfo.runStatus);
+		jobHistoryRow.runStatus = AgentJobUtilities.convertToStatusString(historyInfo.runStatus);
 		jobHistoryRow.instanceID = historyInfo.instanceId;
 		return jobHistoryRow;
 	}
 
 	private formatTime(time: string): string {
 		return time.replace('T', ' ');
+	}
+
+	private showProgressWheel(): boolean {
+		return this._showPreviousRuns !== true && this._noJobsAvailable === false;
+	}
+
+	private setActions(): void {
+		let startIcon: HTMLElement = $('.icon-start').get(0);
+		let stopIcon: HTMLElement = $('.icon-stop').get(0);
+		AgentJobUtilities.getActionIconClassName(startIcon, stopIcon, this.agentJobInfo.currentExecutionStatus);
 	}
 
 	public get showSteps(): boolean {
@@ -263,6 +296,10 @@ export class JobHistoryComponent extends Disposable implements OnInit {
 	public set showSteps(value: boolean) {
 		this._showSteps = value;
 		this._cd.detectChanges();
+	}
+
+	public get stepRows() {
+		return this._stepRows;
 	}
 }
 

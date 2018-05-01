@@ -9,7 +9,7 @@ import 'vs/css!sql/parts/grid/media/styles';
 import 'vs/css!sql/parts/grid/media/slick.grid';
 import 'vs/css!sql/parts/grid/media/slickGrid';
 import 'vs/css!../common/media/jobs';
-import 'vs/css!../common/media/detailview';
+import 'vs/css!sql/media/icons/common-icons';
 
 import { Component, Inject, forwardRef, ElementRef, ChangeDetectorRef, ViewChild, AfterContentChecked } from '@angular/core';
 import * as Utils from 'sql/parts/connection/common/utils';
@@ -21,6 +21,7 @@ import { ActionBar } from 'vs/base/browser/ui/actionbar/actionbar';
 import { IBootstrapService, BOOTSTRAP_SERVICE_ID } from 'sql/services/bootstrap/bootstrapService';
 import { IJobManagementService } from '../common/interfaces';
 import { DashboardServiceInterface } from 'sql/parts/dashboard/services/dashboardServiceInterface.service';
+import { CommonServiceInterface } from 'sql/services/common/commonServiceInterface.service';
 import * as sqlops from 'sqlops';
 import * as vscode from 'vscode';
 import * as nls from 'vs/nls';
@@ -32,6 +33,7 @@ import { JobHistoryComponent } from './jobHistory.component';
 import { AgentViewComponent } from '../agent/agentView.component';
 import { RowDetailView } from 'sql/base/browser/ui/table/plugins/rowdetailview';
 import { JobCacheObject } from 'sql/parts/jobManagement/common/jobManagementService';
+import { AgentJobUtilities } from '../common/agentJobUtilities';
 
 
 export const JOBSVIEW_SELECTOR: string = 'jobsview-component';
@@ -49,20 +51,19 @@ export class JobsViewComponent implements AfterContentChecked {
 	private _disposables = new Array<vscode.Disposable>();
 
 	private columns: Array<Slick.Column<any>> = [
-		{ name: 'Name', field: 'name', formatter: this.renderName, width: 200, },
-		{ name: 'Last Run', field: 'lastRun' },
-		{ name: 'Next Run', field: 'nextRun' },
-		{ name: 'Enabled', field: 'enabled' },
-		{ name: 'Status', field: 'currentExecutionStatus' },
-		{ name: 'Category', field: 'category' },
-		{ name: 'Runnable', field: 'runnable' },
-		{ name: 'Schedule', field: 'hasSchedule' },
-		{ name: 'Category ID', field: 'categoryId' },
-		{ name: 'Last Run Outcome', field: 'lastRunOutcome' },
+		{ name: nls.localize('jobColumns.name','Name'), field: 'name', formatter: this.renderName, width: 200, id: 'name' },
+		{ name: nls.localize('jobColumns.lastRun','Last Run'), field: 'lastRun', minWidth: 150, id: 'lastRun' },
+		{ name: nls.localize('jobColumns.nextRun','Next Run'), field: 'nextRun', minWidth: 150, id: 'nextRun' },
+		{ name: nls.localize('jobColumns.enabled','Enabled'), field: 'enabled', minWidth: 70, id: 'enabled' },
+		{ name: nls.localize('jobColumns.status','Status'), field: 'currentExecutionStatus', minWidth: 60, id: 'currentExecutionStatus' },
+		{ name: nls.localize('jobColumns.category','Category'), field: 'category', minWidth: 150, id: 'category' },
+		{ name: nls.localize('jobColumns.runnable','Runnable'), field: 'runnable', minWidth: 50, id: 'runnable' },
+		{ name: nls.localize('jobColumns.schedule','Schedule'), field: 'hasSchedule', minWidth: 50, id: 'hasSchedule' },
+		{ name: nls.localize('jobColumns.lastRunOutcome', 'Last Run Outcome'), field: 'lastRunOutcome', minWidth: 150, id: 'lastRunOutcome' },
 	];
 
-	private rowDetail: any;
-	private dataView: any;
+	private rowDetail: RowDetailView;
+	private dataView: Slick.Data.DataView<any>;
 
 	@ViewChild('jobsgrid') _gridEl: ElementRef;
 	private isVisible: boolean = false;
@@ -71,10 +72,12 @@ export class JobsViewComponent implements AfterContentChecked {
 	public jobs: sqlops.AgentJobInfo[];
 	public jobHistories: { [jobId: string]: sqlops.AgentJobHistoryInfo[]; } = Object.create(null);
 	private _serverName: string;
+	private _isCloud: boolean;
+	private _showProgressWheel: boolean;
 
 	constructor(
 		@Inject(BOOTSTRAP_SERVICE_ID) private bootstrapService: IBootstrapService,
-		@Inject(forwardRef(() => DashboardServiceInterface)) private _dashboardService: DashboardServiceInterface,
+		@Inject(forwardRef(() => CommonServiceInterface)) private _dashboardService: CommonServiceInterface,
 		@Inject(forwardRef(() => ChangeDetectorRef)) private _cd: ChangeDetectorRef,
 		@Inject(forwardRef(() => ElementRef)) private _el: ElementRef,
 		@Inject(forwardRef(() => AgentViewComponent)) private _agentViewComponent: AgentViewComponent
@@ -90,6 +93,7 @@ export class JobsViewComponent implements AfterContentChecked {
 			this._jobCacheObject.serverName = this._serverName;
 			this._jobManagementService.addToCache(this._serverName, this._jobCacheObject);
 		}
+		this._isCloud = this._dashboardService.connectionManagementService.connectionInfo.serverInfo.isCloud;
 	}
 
 	ngAfterContentChecked() {
@@ -97,18 +101,22 @@ export class JobsViewComponent implements AfterContentChecked {
 			this.isVisible = true;
 			if (!this.isInitialized) {
 				if (this._jobCacheObject.serverName === this._serverName && this._jobCacheObject.jobs.length > 0) {
+					this._showProgressWheel = true;
 					this.jobs = this._jobCacheObject.jobs;
 					this.onFirstVisible(true);
 					this.isInitialized = true;
 				} else {
+					this._showProgressWheel = true;
 					this.onFirstVisible(false);
 					this.isInitialized = true;
 				}
 			}
 		} else if (this.isVisible === true && this._agentViewComponent.refresh === true) {
+			this._showProgressWheel = true;
 			this.onFirstVisible(false);
 			this._agentViewComponent.refresh = false;
 		} else if (this.isVisible === true && this._agentViewComponent.refresh === false) {
+			this._showProgressWheel = true;
 			this.onFirstVisible(true);
 		} else if (this.isVisible === true && this._gridEl.nativeElement.offsetParent === null) {
 			this.isVisible = false;
@@ -129,18 +137,17 @@ export class JobsViewComponent implements AfterContentChecked {
 		};
 
 		this.dataView = new Slick.Data.DataView({ inlineFilters: false });
+
 		let rowDetail = new RowDetailView({
-			cssClass: 'detailView-toggle',
-			preTemplate: this.loadingTemplate,
+			cssClass: '_detail_selector',
 			process: (job) => {
 				(<any>rowDetail).onAsyncResponse.notify({
-					'itemDetail': job,
-				}, undefined, null);
+					'itemDetail': job
+				}, undefined, this);
 			},
-			panelRows: 2,
-			postTemplate: () => ''
+			useRowClick: false,
+			panelRows: 1
 		});
-
 		this.rowDetail = rowDetail;
 
 		columns.unshift(this.rowDetail.getColumnDefinition());
@@ -168,24 +175,22 @@ export class JobsViewComponent implements AfterContentChecked {
 		}
 	}
 
-	onJobsAvailable(jobs: sqlops.AgentJobInfo[]) {
+	private onJobsAvailable(jobs: sqlops.AgentJobInfo[]) {
 		let jobViews = jobs.map((job) => {
 			return {
 				id: job.jobId,
 				jobId: job.jobId,
 				name: job.name,
-				lastRun: job.lastRun,
-				nextRun: job.nextRun,
-				enabled: job.enabled,
-				currentExecutionStatus: job.currentExecutionStatus,
+				lastRun: AgentJobUtilities.convertToLastRun(job.lastRun),
+				nextRun: AgentJobUtilities.convertToNextRun(job.nextRun),
+				enabled: AgentJobUtilities.convertToResponse(job.enabled),
+				currentExecutionStatus: AgentJobUtilities.convertToExecutionStatusString(job.currentExecutionStatus),
 				category: job.category,
-				runnable: job.runnable,
-				hasSchedule: job.hasSchedule,
-				categoryId: job.categoryId,
-				lastRunOutcome: job.lastRunOutcome
+				runnable: AgentJobUtilities.convertToResponse(job.runnable),
+				hasSchedule: AgentJobUtilities.convertToResponse(job.hasSchedule),
+				lastRunOutcome: AgentJobUtilities.convertToStatusString(job.lastRunOutcome)
 			};
 		});
-
 		this._table.registerPlugin(<any>this.rowDetail);
 
 		this.rowDetail.onBeforeRowDetailToggle.subscribe(function(e, args) {
@@ -201,37 +206,127 @@ export class JobsViewComponent implements AfterContentChecked {
 
 		this._table.resizeCanvas();
 		this._table.autosizeColumns();
+		let expandedJobs = this._agentViewComponent.expanded;
+		let expansions = 0;
+		for (let i = 0; i < jobs.length; i++){
+			let job = jobs[i];
+			if (job.lastRunOutcome === 0 && !expandedJobs.get(job.jobId)) {
+				this.expandJobRowDetails(i+expandedJobs.size);
+				this.addToStyleHash(i+expandedJobs.size);
+				this._agentViewComponent.setExpanded(job.jobId, 'Loading Error...');
+			} else if (job.lastRunOutcome === 0 && expandedJobs.get(job.jobId)) {
+				this.expandJobRowDetails(i+expansions);
+				this.addToStyleHash(i+expansions);
+				expansions++;
+			}
+		}
+
+		$('.jobview-jobnamerow').hover(e => {
+			let currentTarget = e.currentTarget;
+			currentTarget.title = currentTarget.innerText;
+		});
+		this._showProgressWheel = false;
+		this._cd.detectChanges();
 		this.loadJobHistories();
 	}
 
-	loadingTemplate() {
-		return '<div class="preload">Loading...</div>';
+	private setRowWithErrorClass(hash: {[index: number]: {[id: string]: string;}}, row: number, errorClass: string) {
+		hash[row] = {
+			'_detail_selector': errorClass,
+			'id': errorClass,
+			'jobId': errorClass,
+			'name': errorClass,
+			'lastRun': errorClass,
+			'nextRun': errorClass,
+			'enabled': errorClass,
+			'currentExecutionStatus': errorClass,
+			'category': errorClass,
+			'runnable': errorClass,
+			'hasSchedule': errorClass,
+			'lastRunOutcome': errorClass
+		};
+		return hash;
 	}
 
-	renderName(row, cell, value, columnDef, dataContext) {
+	private addToStyleHash(row: number) {
+		let hash : {
+			[index: number]: {
+			[id: string]: string;
+		}} = {};
+		hash = this.setRowWithErrorClass(hash, row, 'job-with-error');
+		hash = this.setRowWithErrorClass(hash, row+1,  'error-row');
+		this._table.grid.setCellCssStyles('error-row'+row.toString(), hash);
+	}
+
+	private renderName(row, cell, value, columnDef, dataContext) {
+		let resultIndicatorClass: string;
+		switch (dataContext.lastRunOutcome) {
+			case ('Succeeded'):
+				resultIndicatorClass = 'jobview-jobnameindicatorsuccess';
+				break;
+			case ('Failed'):
+				resultIndicatorClass = 'jobview-jobnameindicatorfailure';
+				break;
+			case ('Canceled'):
+				resultIndicatorClass = 'jobview-jobnameindicatorcancel';
+				break;
+			case ('Status Unknown'):
+				resultIndicatorClass = 'jobview-jobnameindicatorunknown';
+				break;
+			default:
+				resultIndicatorClass = 'jobview-jobnameindicatorfailure';
+				break;
+		}
+
 		return '<table class="jobview-jobnametable"><tr class="jobview-jobnamerow">' +
-			'<td nowrap class="jobview-jobnameindicatorsuccess"></td>' +
+			'<td nowrap class=' + resultIndicatorClass + '></td>' +
 			'<td nowrap class="jobview-jobnametext">' + dataContext.name + '</td>' +
 			'</tr></table>';
 	}
 
-	loadJobHistories() {
+	private expandJobRowDetails(rowIdx: number, message?: string): void {
+		let item = this.dataView.getItemByIdx(rowIdx);
+		item.message = this._agentViewComponent.expanded.get(item.jobId);
+		this.rowDetail.applyTemplateNewLineHeight(item, true);
+	}
+
+	private loadJobHistories() {
+		const self = this;
 		if (this.jobs) {
-			this.jobs.forEach((job) => {
+			let erroredJobs = 0;
+			for (let i = 0; i < this.jobs.length; i++) {
+				let job = this.jobs[i];
 				let ownerUri: string = this._dashboardService.connectionManagementService.connectionInfo.ownerUri;
 				this._jobManagementService.getJobHistory(ownerUri, job.jobId).then((result) => {
 					if (result.jobs) {
-						this.jobHistories[job.jobId] = result.jobs;
-						this._jobCacheObject.setJobHistory(job.jobId, result.jobs);
+						self.jobHistories[job.jobId] = result.jobs;
+						self._jobCacheObject.setJobHistory(job.jobId, result.jobs);
+						if (self._agentViewComponent.expanded.has(job.jobId)) {
+							let jobHistory = self._jobCacheObject.getJobHistory(job.jobId)[0];
+							let item = self.dataView.getItemById(job.jobId + '.error');
+							let noStepsMessage = nls.localize('jobsView.noSteps', 'No Steps available for this job.');
+							let errorMessage = jobHistory ? jobHistory.message: noStepsMessage;
+							item['name'] = nls.localize('jobsView.error', 'Error: ') + errorMessage;
+							self._agentViewComponent.setExpanded(job.jobId, errorMessage);
+							self.dataView.updateItem(job.jobId + '.error', item);
+
+						}
 					}
 				});
-			});
+			}
 		}
+	}
+
+	private isErrorRow(jobName: string) {
+		return jobName.includes('Error');
 	}
 
 	private getJob(args: Slick.OnClickEventArgs<any>): sqlops.AgentJobInfo {
 		let row = args.row;
 		let jobName = args.grid.getCellNode(row, 1).innerText.trim();
+		if (this.isErrorRow(jobName)) {
+			jobName = args.grid.getCellNode(row-1, 1).innerText.trim();
+		}
 		let job = this.jobs.filter(job => job.name === jobName)[0];
 		return job;
 	}

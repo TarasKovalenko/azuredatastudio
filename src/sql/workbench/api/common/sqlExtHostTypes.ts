@@ -67,14 +67,18 @@ export enum ModelComponentTypes {
 	NavContainer,
 	FlexContainer,
 	Card,
+	InputBox,
+	DropDown,
+	Button,
 	DashboardWidget,
-	DashboardWebview
+	DashboardWebview,
+	Form
 }
 
 export interface IComponentShape {
 	type: ModelComponentTypes;
 	id: string;
-	properties?:  { [key: string]: any };
+	properties?: { [key: string]: any };
 	layout?: any;
 	itemConfigs?: IItemConfig[];
 }
@@ -82,4 +86,34 @@ export interface IComponentShape {
 export interface IItemConfig {
 	componentShape: IComponentShape;
 	config: any;
+}
+
+export enum ComponentEventType {
+	PropertiesChanged,
+	onDidChange,
+	onDidClick
+}
+
+export interface IComponentEventArgs {
+	eventType: ComponentEventType;
+	args: any;
+}
+
+export interface IModelViewDialogDetails {
+	title: string;
+	content: string | number[];
+	okButton: number;
+	cancelButton: number;
+	customButtons: number[];
+}
+
+export interface IModelViewTabDetails {
+	title: string;
+	content: string;
+}
+
+export interface IModelViewButtonDetails {
+	label: string;
+	enabled: boolean;
+	hidden: boolean;
 }

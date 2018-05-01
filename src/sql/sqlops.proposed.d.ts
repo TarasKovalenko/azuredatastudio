@@ -19,21 +19,29 @@ declare module 'sqlops' {
 		navContainer(): ContainerBuilder<NavContainer, any, any>;
 		flexContainer(): FlexBuilder;
 		card(): ComponentBuilder<CardComponent>;
+		inputBox(): ComponentBuilder<InputBoxComponent>;
+		button(): ComponentBuilder<ButtonComponent>;
+		dropDown(): ComponentBuilder<DropDownComponent>;
 		dashboardWidget(widgetId: string): ComponentBuilder<WidgetComponent>;
 		dashboardWebview(webviewId: string): ComponentBuilder<WebviewComponent>;
+		formContainer(): FormBuilder;
 	}
 
 	export interface ComponentBuilder<T extends Component> {
 		component(): T;
 		withProperties<U>(properties: U): ComponentBuilder<T>;
 	}
-	export interface ContainerBuilder<T extends Component, TLayout,TItemLayout> extends ComponentBuilder<T> {
+	export interface ContainerBuilder<T extends Component, TLayout, TItemLayout> extends ComponentBuilder<T> {
 		withLayout(layout: TLayout): ContainerBuilder<T, TLayout, TItemLayout>;
-		withItems(components: Array<Component>, itemLayout ?: TItemLayout): ContainerBuilder<T, TLayout, TItemLayout>;
+		withItems(components: Array<Component>, itemLayout?: TItemLayout): ContainerBuilder<T, TLayout, TItemLayout>;
 	}
 
 	export interface FlexBuilder extends ContainerBuilder<FlexContainer, FlexLayout, FlexItemLayout> {
 
+	}
+
+	export interface FormBuilder extends ContainerBuilder<FormContainer, FormLayout, FormItemLayout> {
+		withFormItems(components: FormComponent[], itemLayout?: FormItemLayout): ContainerBuilder<FormContainer, FormLayout, FormItemLayout>;
 	}
 
 	export interface Component {
@@ -49,10 +57,16 @@ declare module 'sqlops' {
 		updateProperties(properties: { [key: string]: any }): Thenable<boolean>;
 	}
 
+	export interface FormComponent {
+		component: Component;
+		title: string;
+		actions?: Component[];
+	}
+
 	/**
 	 * A component that contains other components
 	 */
-	export interface Container<TLayout,TItemLayout> extends Component {
+	export interface Container<TLayout, TItemLayout> extends Component {
 		/**
 		 * A copy of the child items array. This cannot be added to directly -
 		 * components must be created using the create methods instead
@@ -69,7 +83,7 @@ declare module 'sqlops' {
 		 * @param itemConfigs the definitions
 		 * @param {*} [itemLayout] Optional layout for the child items
 		 */
-		addItems(itemConfigs: Array<Component>, itemLayout ?: TItemLayout): void;
+		addItems(itemConfigs: Array<Component>, itemLayout?: TItemLayout): void;
 
 		/**
 		 * Creates a child component and adds it to this container.
@@ -77,7 +91,7 @@ declare module 'sqlops' {
 		 * @param {Component} component the component to be added
 		 * @param {*} [itemLayout] Optional layout for this child item
 		 */
-		addItem(component: Component, itemLayout ?: TItemLayout): void;
+		addItem(component: Component, itemLayout?: TItemLayout): void;
 
 		/**
 		 * Defines the layout for this container
@@ -107,6 +121,14 @@ declare module 'sqlops' {
 		 * Matches the justify-content CSS property.
 		 */
 		justifyContent?: string;
+		/**
+		 * Matches the align-items CSS property.
+		 */
+		alignItems?: string;
+		/**
+		 * Matches the align-content CSS property.
+		 */
+		alignContent?: string;
 	}
 
 	export interface FlexItemLayout {
@@ -116,13 +138,25 @@ declare module 'sqlops' {
 		order?: number;
 		/**
 		 * Matches the flex CSS property and its available values.
-		 * Default is "0 1 auto".
+		 * Default is "1 1 auto".
 		 */
 		flex?: string;
 	}
 
+	export interface FormItemLayout {
+
+	}
+
+	export interface FormLayout {
+
+	}
+
 	export interface FlexContainer extends Container<FlexLayout, FlexItemLayout> {
 	}
+
+	export interface FormContainer extends Container<FormLayout, FormItemLayout> {
+	}
+
 
 	/**
 	 * Describes an action to be shown in the UI, with a user-readable label
@@ -142,18 +176,47 @@ declare module 'sqlops' {
 
 	/**
 	 * Properties representing the card component, can be used
-	 * when using ModelBuilder to create the comopnent
+	 * when using ModelBuilder to create the component
 	 */
-	export interface CardProperties  {
+	export interface CardProperties {
 		label: string;
 		value?: string;
 		actions?: ActionDescriptor[];
+	}
+
+	export interface InputBoxProperties {
+		value?: string;
+	}
+
+	export interface DropDownProperties {
+		value?: string;
+		values?: string[];
+	}
+
+	export interface ButtonProperties {
+		label?: string;
 	}
 
 	export interface CardComponent extends Component {
 		label: string;
 		value: string;
 		actions?: ActionDescriptor[];
+	}
+
+	export interface InputBoxComponent extends Component {
+		value: string;
+		onTextChanged: vscode.Event<any>;
+	}
+
+	export interface DropDownComponent extends Component {
+		value: string;
+		values: string[];
+		onValueChanged: vscode.Event<any>;
+	}
+
+	export interface ButtonComponent extends Component {
+		label: string;
+		onDidClick: vscode.Event<any>;
 	}
 
 	export interface WidgetComponent extends Component {
@@ -202,5 +265,119 @@ declare module 'sqlops' {
 		 * Register a provider for a model-view widget
 		 */
 		export function registerModelViewProvider(widgetId: string, handler: (view: ModelView) => void): void;
+	}
+
+	export namespace window {
+		export namespace modelviewdialog {
+			/**
+			 * Create a dialog with the given title
+			 * @param title The title of the dialog, displayed at the top
+			 */
+			export function createDialog(title: string): Dialog;
+
+			/**
+			 * Create a dialog tab which can be included as part of the content of a dialog
+			 * @param title The title of the page, displayed on the tab to select the page
+			 */
+			export function createTab(title: string): DialogTab;
+
+			/**
+			 * Create a button which can be included in a dialog
+			 * @param label The label of the button
+			 */
+			export function createButton(label: string): Button;
+
+			/**
+			 * Opens the given dialog if it is not already open
+			 */
+			export function openDialog(dialog: Dialog): void;
+
+			/**
+			 * Closes the given dialog if it is open
+			 */
+			export function closeDialog(dialog: Dialog): void;
+
+			// Model view dialog classes
+			export interface Dialog {
+				/**
+				 * The title of the dialog
+				 */
+				title: string,
+
+				/**
+				 * The content of the dialog. If multiple tabs are given they will be displayed with tabs
+				 * If a string is given, it should be the ID of the dialog's model view content
+				 */
+				content: string | DialogTab[],
+
+				/**
+				 * The ok button
+				 */
+				okButton: Button;
+
+				/**
+				 * The cancel button
+				 */
+				cancelButton: Button;
+
+				/**
+				 * Any additional buttons that should be displayed
+				 */
+				customButtons: Button[];
+			}
+
+			export interface DialogTab {
+				/**
+				 * The title of the tab
+				 */
+				title: string;
+
+				/**
+				 * A string giving the ID of the tab's model view content
+				 */
+				content: string;
+			}
+
+			export interface Button {
+				/**
+				 * The label displayed on the button
+				 */
+				label: string;
+
+				/**
+				 * Whether the button is enabled
+				 */
+				enabled: boolean;
+
+				/**
+				 * Whether the button is hidden
+				 */
+				hidden: boolean;
+
+				/**
+				 * Raised when the button is clicked
+				 */
+				readonly onClick: vscode.Event<void>;
+			}
+		}
+	}
+
+	/**
+	 * Namespace for interacting with query editor
+	*/
+	export namespace queryeditor {
+
+		/**
+		 * Make connection for the query editor
+		 * @param {string} fileUri file URI for the query editor
+		 * @param {string} connectionId connection ID
+		 */
+		export function connect(fileUri: string, connectionId: string): Thenable<void>;
+
+		/**
+		 * Run query if it is a query editor and it is already opened.
+		 * @param {string} fileUri file URI for the query editor
+		 */
+		export function runQuery(fileUri: string): void;
 	}
 }

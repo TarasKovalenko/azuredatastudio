@@ -10,13 +10,14 @@ import { IExtHostContext } from 'vs/workbench/api/node/extHost.protocol';
 
 import * as sqlops from 'sqlops';
 
-import { IDashboardViewService } from 'sql/services/dashboard/common/dashboardViewService';
+import { IModelViewService } from 'sql/services/modelComponents/modelViewService';
 import { IItemConfig, ModelComponentTypes, IComponentShape } from 'sql/workbench/api/common/sqlExtHostTypes';
 import { IModelView } from 'sql/services/model/modelViewService';
+import { Disposable } from 'vs/base/common/lifecycle';
 
 
 @extHostNamedCustomer(SqlMainContext.MainThreadModelView)
-export class MainThreadModelView implements MainThreadModelViewShape {
+export class MainThreadModelView extends Disposable implements MainThreadModelViewShape {
 
 	private static _handlePool = 0;
 	private readonly _proxy: ExtHostModelViewShape;
@@ -26,8 +27,9 @@ export class MainThreadModelView implements MainThreadModelViewShape {
 
 	constructor(
 		context: IExtHostContext,
-		@IDashboardViewService viewService: IDashboardViewService
+		@IModelViewService viewService: IModelViewService
 	) {
+		super();
 		this._proxy = context.getProxy(SqlExtHostContext.ExtHostModelView);
 		viewService.onRegisteredModelView(view => {
 			if (this.knownWidgets.includes(view.id)) {
@@ -38,16 +40,14 @@ export class MainThreadModelView implements MainThreadModelViewShape {
 		});
 	}
 
-	public dispose(): void {
-		throw new Error('Method not implemented.');
-	}
-
 	$registerProvider(id: string) {
 		this.knownWidgets.push(id);
 	}
 
 	$initializeModel(handle: number, rootComponent: IComponentShape): Thenable<void> {
-		return this.execModelViewAction(handle, (modelView) => modelView.initializeModel(rootComponent));
+		return this.execModelViewAction(handle, (modelView) => {
+			modelView.initializeModel(rootComponent);
+		});
 	}
 
 	$clearContainer(handle: number, componentId: string): Thenable<void> {
@@ -61,6 +61,21 @@ export class MainThreadModelView implements MainThreadModelViewShape {
 
 	$setLayout(handle: number, componentId: string, layout: any): Thenable<void> {
 		return this.execModelViewAction(handle, (modelView) => modelView.setLayout(componentId, layout));
+	}
+
+	private onEvent(handle: number, componentId: string, eventArgs: any) {
+		this._proxy.$handleEvent(handle, componentId, eventArgs);
+	}
+
+	$registerEvent(handle: number, componentId: string): Thenable<void> {
+		let properties: { [key: string]: any; } = { eventName: this.onEvent };
+		return this.execModelViewAction(handle, (modelView) => {
+			this._register(modelView.onEvent(e => {
+				if (e.componentId && e.componentId === componentId) {
+					this.onEvent(handle, componentId, e);
+				}
+			}));
+		});
 	}
 
 	$setProperties(handle: number, componentId: string, properties: { [key: string]: any; }): Thenable<void> {

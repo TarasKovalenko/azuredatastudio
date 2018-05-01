@@ -20,6 +20,7 @@ import { Color } from 'vs/base/common/color';
 import * as types from 'vs/base/common/types';
 import { Disposable } from 'vs/base/common/lifecycle';
 import { IColorTheme } from 'vs/workbench/services/themes/common/workbenchThemeService';
+import * as nls from 'vs/nls';
 
 export enum ChartType {
 	Bar = 'bar',
@@ -79,6 +80,7 @@ export interface IChartConfig {
 	legendPosition?: LegendPosition;
 	dataDirection?: DataDirection;
 	columnsAsLabels?: boolean;
+	showTopNData?: number;
 }
 
 export const defaultChartConfig: IChartConfig = {
@@ -97,11 +99,13 @@ export const defaultChartConfig: IChartConfig = {
 							[chartType]="chartType"
 							[colors]="colors"
 							[options]="_options"></canvas>
+					<div *ngIf="_hasError">{{CHART_ERROR_MESSAGE}}</div>
 				</div>`
 })
 export abstract class ChartInsight extends Disposable implements IInsightsView {
 	private _isDataAvailable: boolean = false;
 	private _hasInit: boolean = false;
+	private _hasError: boolean = false;
 	private _options: any = {};
 
 	@ViewChild(BaseChartDirective) private _chart: BaseChartDirective;
@@ -109,6 +113,8 @@ export abstract class ChartInsight extends Disposable implements IInsightsView {
 	protected _defaultConfig = defaultChartConfig;
 	protected _config: IChartConfig;
 	protected _data: IInsightData;
+
+	private readonly CHART_ERROR_MESSAGE = nls.localize('chartErrorMessage', 'Chart cannot be displayed with the given data');
 
 	protected abstract get chartType(): ChartType;
 
@@ -128,7 +134,14 @@ export abstract class ChartInsight extends Disposable implements IInsightsView {
 		// hence it's easier to not render until ready
 		this.options = mixin(this.options, { maintainAspectRatio: false });
 		this._hasInit = true;
-		this._changeRef.detectChanges();
+		this._hasError = false;
+		try {
+			this._changeRef.detectChanges();
+		} catch (err) {
+			this._hasInit = false;
+			this._hasError = true;
+			this._changeRef.detectChanges();
+		}
 		TelemetryUtils.addTelemetry(this._bootstrapService.telemetryService, TelemetryKeys.ChartCreated, { type: this.chartType });
 	}
 
@@ -179,12 +192,40 @@ export abstract class ChartInsight extends Disposable implements IInsightsView {
 		// unmemoize chart data as the data needs to be recalced
 		unmemoize(this, 'chartData');
 		unmemoize(this, 'labels');
-		this._data = data;
+		this._data = this.filterToTopNData(data);
 		if (isValidData(data)) {
 			this._isDataAvailable = true;
 		}
 
 		this._changeRef.detectChanges();
+	}
+
+	private filterToTopNData(data: IInsightData): IInsightData {
+		if (this._config.dataDirection === 'horizontal') {
+			return {
+				columns: this.getTopNData(data.columns),
+				rows: data.rows.map((row) => {
+					return this.getTopNData(row);
+				})
+			};
+		} else {
+			return {
+				columns: data.columns,
+				rows: data.rows.slice(0, this._config.showTopNData)
+			};
+		}
+	}
+
+	private getTopNData(data: any[]): any[] {
+		if (this._config.showTopNData) {
+			if (this._config.dataDirection === 'horizontal' && this._config.labelFirstColumn) {
+				return data.slice(0, this._config.showTopNData + 1);
+			} else {
+				return data.slice(0, this._config.showTopNData);
+			}
+		} else {
+			return data;
+		}
 	}
 
 	protected clearMemoize(): void {
@@ -226,17 +267,17 @@ export abstract class ChartInsight extends Disposable implements IInsightsView {
 			}
 		} else {
 			if (this._config.columnsAsLabels) {
-				return this._data.rows[0].map((row, i) => {
+				return this._data.rows[0].slice(1).map((row, i) => {
 					return {
-						data: this._data.rows.map(row => Number(row[i])),
-						label: this._data.columns[i]
+						data: this._data.rows.map(row => Number(row[i + 1])),
+						label: this._data.columns[i + 1]
 					};
 				});
 			} else {
-				return this._data.rows[0].map((row, i) => {
+				return this._data.rows[0].slice(1).map((row, i) => {
 					return {
-						data: this._data.rows.map(row => Number(row[i])),
-						label: 'Series' + i
+						data: this._data.rows.map(row => Number(row[i + 1])),
+						label: 'Series' + (i + 1)
 					};
 				});
 			}
@@ -250,7 +291,11 @@ export abstract class ChartInsight extends Disposable implements IInsightsView {
 	@memoize
 	public getLabels(): Array<string> {
 		if (this._config.dataDirection === 'horizontal') {
-			return this._data.columns;
+			if (this._config.labelFirstColumn) {
+				return this._data.columns.slice(1);
+			} else {
+				return this._data.columns;
+			}
 		} else {
 			return this._data.rows.map(row => row[0]);
 		}

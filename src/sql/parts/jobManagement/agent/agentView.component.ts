@@ -4,6 +4,8 @@
  *--------------------------------------------------------------------------------------------*/
 
 import 'vs/css!../common/media/jobs';
+import 'sql/parts/dashboard/common/dashboardPanelStyles';
+
 import * as nls from 'vs/nls';
 import { Component, Inject, forwardRef, ElementRef, ChangeDetectorRef, ViewChild, Injectable} from '@angular/core';
 import * as Utils from 'sql/parts/connection/common/utils';
@@ -36,6 +38,7 @@ export class AgentViewComponent {
 	private _jobId: string = null;
 	private _agentJobInfo: AgentJobInfo = null;
 	private _refresh: boolean = undefined;
+	private _expanded: Map<string, string>;
 
 	public jobsIconClass: string = 'jobsview-icon';
 
@@ -48,6 +51,7 @@ export class AgentViewComponent {
 
 	constructor(
 		@Inject(forwardRef(() => ChangeDetectorRef)) private _cd: ChangeDetectorRef){
+			this._expanded = new Map<string, string>();
 	}
 
 	/**
@@ -67,6 +71,10 @@ export class AgentViewComponent {
 
 	public get refresh(): boolean {
 		return this._refresh;
+	}
+
+	public get expanded(): Map<string, string> {
+		return this._expanded;
 	}
 
 	/**
@@ -91,5 +99,9 @@ export class AgentViewComponent {
 	public set refresh(value: boolean) {
 		this._refresh = value;
 		this._cd.detectChanges();
+	}
+
+	public setExpanded(jobId: string, errorMessage: string) {
+		this._expanded.set(jobId, errorMessage);
 	}
 }
