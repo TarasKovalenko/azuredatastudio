@@ -14,6 +14,7 @@ import * as sqlops from 'sqlops';
 
 import { SqlMainContext, ExtHostModelViewShape, MainThreadModelViewShape } from 'sql/workbench/api/node/sqlExtHost.protocol';
 import { IItemConfig, ModelComponentTypes, IComponentShape, IComponentEventArgs, ComponentEventType } from 'sql/workbench/api/common/sqlExtHostTypes';
+import { IActionDescriptor } from 'vs/editor/standalone/browser/standaloneCodeEditor';
 
 class ModelBuilderImpl implements sqlops.ModelBuilder {
 	private nextComponentId: number;
@@ -243,6 +244,14 @@ class ComponentWrapper implements sqlops.Component {
 		return this.itemConfigs.map(itemConfig => itemConfig.component);
 	}
 
+	public get enabled(): boolean {
+		return this.properties['enabled'];
+	}
+
+	public set enabled(value: boolean) {
+		this.setProperty('enabled', value);
+	}
+
 	public toComponentShape(): IComponentShape {
 		return <IComponentShape>{
 			id: this.id,
@@ -298,7 +307,7 @@ class ComponentWrapper implements sqlops.Component {
 		} else if (eventArgs) {
 			let emitter = this._emitterMap.get(eventArgs.eventType);
 			if (emitter) {
-				emitter.fire();
+				emitter.fire(eventArgs.args);
 			}
 		}
 	}
@@ -354,6 +363,7 @@ class CardWrapper extends ComponentWrapper implements sqlops.CardComponent {
 	constructor(proxy: MainThreadModelViewShape, handle: number, id: string) {
 		super(proxy, handle, ModelComponentTypes.Card, id);
 		this.properties = {};
+		this._emitterMap.set(ComponentEventType.onDidClick, new Emitter<any>());
 	}
 
 	public get label(): string {
@@ -374,6 +384,11 @@ class CardWrapper extends ComponentWrapper implements sqlops.CardComponent {
 	public set actions(a: sqlops.ActionDescriptor[]) {
 		this.setProperty('actions', a);
 	}
+
+	public get onDidActionClick(): vscode.Event<sqlops.ActionDescriptor> {
+		let emitter = this._emitterMap.get(ComponentEventType.onDidClick);
+		return emitter && emitter.event;
+	}
 }
 
 class InputBoxWrapper extends ComponentWrapper implements sqlops.InputBoxComponent {
@@ -389,6 +404,34 @@ class InputBoxWrapper extends ComponentWrapper implements sqlops.InputBoxCompone
 	}
 	public set value(v: string) {
 		this.setProperty('value', v);
+	}
+
+	public get ariaLabel(): string {
+		return this.properties['ariaLabel'];
+	}
+	public set ariaLabel(v: string) {
+		this.setProperty('ariaLabel', v);
+	}
+
+	public get placeHolder(): string {
+		return this.properties['placeHolder'];
+	}
+	public set placeHolder(v: string) {
+		this.setProperty('placeHolder', v);
+	}
+
+	public get height(): number {
+		return this.properties['height'];
+	}
+	public set height(v: number) {
+		this.setProperty('height', v);
+	}
+
+	public get width(): number {
+		return this.properties['width'];
+	}
+	public set width(v: number) {
+		this.setProperty('width', v);
 	}
 
 	public get onTextChanged(): vscode.Event<any> {
