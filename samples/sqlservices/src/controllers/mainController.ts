@@ -9,6 +9,8 @@ import * as sqlops from 'sqlops';
 import * as Utils from '../utils';
 import * as vscode from 'vscode';
 import SplitPropertiesPanel from './splitPropertiesPanel';
+import * as fs from 'fs';
+import * as path from 'path';
 
 /**
  * The main controller class that initializes the extension
@@ -33,6 +35,8 @@ export default class MainController implements vscode.Disposable {
 	}
 
 	public activate(): Promise<boolean> {
+		const buttonHtml = fs.readFileSync(path.join(__dirname, 'button.html')).toString();
+		const counterHtml = fs.readFileSync(path.join(__dirname, 'counter.html')).toString();
 		this.registerSqlServicesModelView();
 		this.registerSplitPanelModelView();
 
@@ -44,8 +48,12 @@ export default class MainController implements vscode.Disposable {
 			this.openDialog();
 		});
 
-		vscode.commands.registerCommand('sqlservices.openEditor', () =>  {
+		vscode.commands.registerCommand('sqlservices.openEditor', () => {
 			this.openEditor();
+		});
+
+		vscode.commands.registerCommand('sqlservices.openEditorWithWebView', () => {
+			this.openEditorWithWebview(buttonHtml, counterHtml);
 		});
 
 		return Promise.resolve(true);
@@ -109,7 +117,7 @@ export default class MainController implements vscode.Disposable {
 			inputBox.onTextChanged((params) => {
 			vscode.window.showInformationMessage(inputBox.value);
 				f = f + 1;
-				inputBox2.value=f.toString();
+				inputBox2.value = f.toString();
 			});
 			dropdown.onValueChanged((params) => {
 					vscode.window.showInformationMessage(inputBox2.value);
@@ -121,24 +129,24 @@ export default class MainController implements vscode.Disposable {
 					name: 'radioButtonOptions',
 					label: 'Option 1',
 					checked: true
-            //width: 300
-			}).component();
+					//width: 300
+				}).component();
 			let radioButton2 = view.modelBuilder.radioButton()
 				.withProperties({
 					value: 'option2',
 					name: 'radioButtonOptions',
 					label: 'Option 2'
 
-            //width: 300
-			}).component();
+					//width: 300
+				}).component();
 			let flexRadioButtonsModel = view.modelBuilder.flexContainer()
 				.withLayout({
 					flexFlow: 'column',
 					alignItems: 'left',
 					justifyContent: 'space-evenly',
 					height: 50
-			}).withItems([
-				radioButton, radioButton2]
+				}).withItems([
+					radioButton, radioButton2]
 				, { flex: '1 1 50%' }).component();
 			let formModel = view.modelBuilder.formContainer()
 			.withFormItems([{
@@ -148,7 +156,7 @@ export default class MainController implements vscode.Disposable {
 						component: inputBox2,
 						title: 'Recovery model'
 				}, {
-						component:dropdown,
+						component: dropdown,
 						title: 'Backup type'
 				}, {
 						component: checkbox,
@@ -158,11 +166,11 @@ export default class MainController implements vscode.Disposable {
 						title: 'Backup files',
 						actions: [button, button3]
 				}, {
-					component: flexRadioButtonsModel,
-					title: 'Options'
+						component: flexRadioButtonsModel,
+						title: 'Options'
 				}], {
-						horizontal:false,
-						width: 500,
+						horizontal: false,
+						//width: 500,
 						componentWidth: 400
 							}).component();
 			await view.initializeModel(formModel);
@@ -172,7 +180,7 @@ export default class MainController implements vscode.Disposable {
 	}
 
 	private openEditor(): void {
-		let editor = sqlops.workspace.createModelViewEditor('Test Editor view');
+		let editor = sqlops.workspace.createModelViewEditor('Test Model View');
 		editor.registerContent(async view => {
 			let inputBox = view.modelBuilder.inputBox()
 				.withValidation(component => component.value !== 'valid')
@@ -182,7 +190,43 @@ export default class MainController implements vscode.Disposable {
 					component: inputBox,
 					title: 'Enter anything but "valid"'
 				}]).component();
+			view.onClosed((params) => {
+				vscode.window.showInformationMessage('The model view editor is closed.');
+			});
 			await view.initializeModel(formModel);
+		});
+		editor.openEditor();
+	}
+
+	private openEditorWithWebview(html1: string, html2: string): void {
+		let editor = sqlops.workspace.createModelViewEditor('Editor view1', { retainContextWhenHidden: true });
+		editor.registerContent(async view => {
+			let count = 0;
+			let webview1 = view.modelBuilder.webView()
+				.withProperties({
+					html: html1
+				})
+				.component();
+			let webview2 = view.modelBuilder.webView()
+				.withProperties({
+					html: html2
+				})
+				.component();
+			webview1.onMessage((params) => {
+				count++;
+				webview2.message = count;
+			});
+
+			let flexModel = view.modelBuilder.flexContainer()
+				.withLayout({
+					flexFlow: 'column',
+					alignItems: 'flex-start',
+					height: 500
+				}).withItems([
+					webview1, webview2
+				], { flex: '1 1 50%' })
+				.component();
+			await view.initializeModel(flexModel);
 		});
 		editor.openEditor();
 	}
