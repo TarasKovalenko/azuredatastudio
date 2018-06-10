@@ -56,6 +56,10 @@ export default class MainController implements vscode.Disposable {
 			this.openEditorWithWebview(buttonHtml, counterHtml);
 		});
 
+		vscode.commands.registerCommand('sqlservices.openEditorWithWebView2', () => {
+			this.openEditorWithWebview2();
+		});
+
 		return Promise.resolve(true);
 	}
 
@@ -70,9 +74,9 @@ export default class MainController implements vscode.Disposable {
 		dialog.cancelButton.onClick(() => console.log('cancel clicked!'));
 		dialog.okButton.label = 'ok';
 		dialog.cancelButton.label = 'no';
-		let customButton1 = sqlops.window.modelviewdialog.createButton('Test button 1');
+		let customButton1 = sqlops.window.modelviewdialog.createButton('Load name');
 		customButton1.onClick(() => console.log('button 1 clicked!'));
-		let customButton2 = sqlops.window.modelviewdialog.createButton('Test button 2');
+		let customButton2 = sqlops.window.modelviewdialog.createButton('Load all');
 		customButton2.onClick(() => console.log('button 2 clicked!'));
 		dialog.customButtons = [customButton1, customButton2];
 		tab1.registerContent(async (view) => {
@@ -80,7 +84,14 @@ export default class MainController implements vscode.Disposable {
 				.withProperties({
 					//width: 300
 				}).component();
+			let inputBoxWrapper = view.modelBuilder.loadingComponent().withItem(inputBox).component();
+			inputBoxWrapper.loading = false;
+			customButton1.onClick(() => {
+				inputBoxWrapper.loading = true;
+				setTimeout(() => inputBoxWrapper.loading = false, 5000);
+			});
 			let inputBox2 = view.modelBuilder.inputBox().component();
+			let backupFilesInputBox = view.modelBuilder.inputBox().component();
 
 			let checkbox = view.modelBuilder.checkBox()
 				.withProperties({
@@ -103,7 +114,7 @@ export default class MainController implements vscode.Disposable {
 			let button2 = view.modelBuilder.button()
 				.component();
 			button.onDidClick(e => {
-				inputBox2.value = 'Button clicked';
+				backupFilesInputBox.value = 'Button clicked';
 			});
 			let dropdown = view.modelBuilder.dropDown()
 				.withProperties({
@@ -160,18 +171,34 @@ export default class MainController implements vscode.Disposable {
 				inputBox.value = radioButton.value;
 				groupModel1.enabled = false;
 			});
+			let table = view.modelBuilder.table().withProperties({
+				data: [
+					['1', '2', '2'],
+					['4', '5', '6'],
+					['7', '8', '9']
+				], columns: ['c1', 'c2', 'c3'],
+				height: 250,
+				selectedRows: [0]
+			}).component();
+			table.onRowSelected(e => {
+				// TODO:
+			});
+			let listBox = view.modelBuilder.listBox().withProperties({
+				values: ['1', '2', '3'],
+				selectedRow: 2
+			}).component();
 
 			let flexRadioButtonsModel = view.modelBuilder.flexContainer()
 				.withLayout({
 					flexFlow: 'column',
 					alignItems: 'left',
-					height: 50
+					height: 150
 				}).withItems([
 					radioButton, groupModel1, radioButton2]
 				, { flex: '1 1 50%' }).component();
 			let formModel = view.modelBuilder.formContainer()
 				.withFormItems([{
-					component: inputBox,
+					component: inputBoxWrapper,
 					title: 'Backup name'
 				}, {
 					component: inputBox2,
@@ -183,17 +210,29 @@ export default class MainController implements vscode.Disposable {
 					component: checkbox,
 					title: ''
 				}, {
-					component: inputBox2,
+					component: backupFilesInputBox,
 					title: 'Backup files',
 					actions: [button, button3]
 				}, {
 					component: flexRadioButtonsModel,
 					title: 'Options'
+				}, {
+					component: table,
+					title: 'Table'
+				}, {
+					component: listBox,
+					title: 'List Box'
 				}], {
 					horizontal: false,
 					componentWidth: 400
 				}).component();
-			await view.initializeModel(formModel);
+			let formWrapper = view.modelBuilder.loadingComponent().withItem(formModel).component();
+			formWrapper.loading = false;
+			customButton2.onClick(() => {
+				formWrapper.loading = true;
+				setTimeout(() => formWrapper.loading = false, 5000);
+			});
+			await view.initializeModel(formWrapper);
 		});
 
 		sqlops.window.modelviewdialog.openDialog(dialog);
@@ -219,7 +258,7 @@ export default class MainController implements vscode.Disposable {
 	}
 
 	private openEditorWithWebview(html1: string, html2: string): void {
-		let editor = sqlops.workspace.createModelViewEditor('Editor view1', { retainContextWhenHidden: true });
+		let editor = sqlops.workspace.createModelViewEditor('Editor webview', { retainContextWhenHidden: true });
 		editor.registerContent(async view => {
 			let count = 0;
 			let webview1 = view.modelBuilder.webView()
@@ -250,6 +289,72 @@ export default class MainController implements vscode.Disposable {
 		});
 		editor.openEditor();
 	}
+
+	private openEditorWithWebview2(): void {
+		let editor = sqlops.workspace.createModelViewEditor('Editor webview2', { retainContextWhenHidden: true });
+		editor.registerContent(async view => {
+
+			let inputBox = view.modelBuilder.inputBox().component();
+			let dropdown = view.modelBuilder.dropDown()
+				.withProperties({
+					value: 'aa',
+					values: ['aa', 'bb', 'cc']
+				})
+				.component();
+			let runIcon = path.join(__dirname, '..', 'media', 'start.svg');
+			let runButton = view.modelBuilder.button()
+				.withProperties({
+					label: 'Run',
+					iconPath: runIcon
+				}).component();
+
+			let monitorLightPath = vscode.Uri.file(path.join(__dirname, '..', 'media', 'monitor.svg'));
+			let monitorIcon = {
+				light: monitorLightPath,
+				dark: path.join(__dirname, '..', 'media', 'monitor_inverse.svg') };
+
+			let monitorButton = view.modelBuilder.button()
+					.withProperties({
+						label: 'Monitor',
+						iconPath: monitorIcon
+					}).component();
+			let toolbarModel = view.modelBuilder.toolbarContainer()
+				.withToolbarItems([{
+					component: inputBox,
+					title: 'User name:'
+				}, {
+					component: dropdown,
+					title: 'favorite:'
+				}, {
+					component: runButton
+				}, {
+					component: monitorButton
+				}]).component();
+
+
+			let webview = view.modelBuilder.webView()
+				.component();
+
+			let flexModel = view.modelBuilder.flexContainer().component();
+			flexModel.addItem(toolbarModel, { flex: '0' });
+			flexModel.addItem(webview, { flex: '1' });
+			flexModel.setLayout({
+				flexFlow: 'column',
+				alignItems: 'stretch',
+				height: '100%'
+			});
+
+			let templateValues = { url: 'http://whoisactive.com/docs/' };
+			Utils.renderTemplateHtml(path.join(__dirname, '..'), 'templateTab.html', templateValues)
+				.then(html => {
+					webview.html = html;
+				});
+
+			await view.initializeModel(flexModel);
+		});
+		editor.openEditor();
+	}
+
 
 	private registerSqlServicesModelView(): void {
 		sqlops.ui.registerModelViewProvider('sqlservices', async (view) => {
