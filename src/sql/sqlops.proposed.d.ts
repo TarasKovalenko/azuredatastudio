@@ -28,6 +28,7 @@ declare module 'sqlops' {
 		dropDown(): ComponentBuilder<DropDownComponent>;
 		listBox(): ComponentBuilder<ListBoxComponent>;
 		table(): ComponentBuilder<TableComponent>;
+		declarativeTable(): ComponentBuilder<DeclarativeTableComponent>;
 		dashboardWidget(widgetId: string): ComponentBuilder<DashboardWidgetComponent>;
 		dashboardWebview(webviewId: string): ComponentBuilder<DashboardWebviewComponent>;
 		formContainer(): FormBuilder;
@@ -301,6 +302,11 @@ declare module 'sqlops' {
 		width: number;
 		inputType?: InputBoxInputType;
 		required?: boolean;
+		multiline?: boolean;
+		rows?: number;
+		columns?: number;
+		min?: number;
+		max?: number;
 	}
 
 	export interface TableColumn {
@@ -316,6 +322,12 @@ declare module 'sqlops' {
 	export interface CheckBoxProperties {
 		checked?: boolean;
 		label?: string;
+	}
+
+	export enum DeclarativeDataType {
+		string = 'string',
+		category = 'category',
+		boolean = 'boolean'
 	}
 
 	export interface RadioButtonProperties {
@@ -335,9 +347,23 @@ declare module 'sqlops' {
 		editable?: boolean;
 	}
 
+	export interface DeclarativeTableColumn {
+		displayName: string;
+		categoryValues: CategoryValue[];
+		valueType: DeclarativeDataType;
+		isReadOnly: boolean;
+		width: number|string;
+	}
+
+	export interface DeclarativeTableProperties {
+		data: any[][];
+		columns: DeclarativeTableColumn[];
+	}
+
 	export interface ListBoxProperties {
 		selectedRow?: number;
 		values?: string[];
+
 	}
 
 	export interface WebViewProperties {
@@ -383,6 +409,16 @@ declare module 'sqlops' {
 		value: string;
 		values: string[];
 		onValueChanged: vscode.Event<any>;
+	}
+
+	export interface TableCell {
+		row: number;
+		column: number;
+		value: any;
+	}
+
+	export interface DeclarativeTableComponent extends Component, DeclarativeTableProperties {
+		onDataChanged: vscode.Event<any>;
 	}
 
 	export interface ListBoxComponent extends Component, ListBoxProperties {

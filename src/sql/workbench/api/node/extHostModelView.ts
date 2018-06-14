@@ -130,6 +130,13 @@ class ModelBuilderImpl implements sqlops.ModelBuilder {
 		return builder;
 	}
 
+	declarativeTable(): sqlops.ComponentBuilder<sqlops.DeclarativeTableComponent> {
+		let id = this.getNextComponentId();
+		let builder: ComponentBuilderImpl<sqlops.DeclarativeTableComponent> = this.getComponentBuilder(new DeclarativeTableWrapper(this._proxy, this._handle, id), id);
+		this._componentBuilders.set(id, builder);
+		return builder;
+	}
+
 	dashboardWidget(widgetId: string): sqlops.ComponentBuilder<sqlops.DashboardWidgetComponent> {
 		let id = this.getNextComponentId();
 		let builder = this.getComponentBuilder<sqlops.DashboardWidgetComponent>(new ComponentWrapper(this._proxy, this._handle, ModelComponentTypes.DashboardWidget, id), id);
@@ -553,11 +560,46 @@ class InputBoxWrapper extends ComponentWrapper implements sqlops.InputBoxCompone
 		this.setProperty('height', v);
 	}
 
+	public get rows(): number {
+		return this.properties['rows'];
+	}
+	public set rows(v: number) {
+		this.setProperty('rows', v);
+	}
+
+	public get min(): number {
+		return this.properties['min'];
+	}
+	public set min(v: number) {
+		this.setProperty('min', v);
+	}
+
+	public get max(): number {
+		return this.properties['max'];
+	}
+	public set max(v: number) {
+		this.setProperty('max', v);
+	}
+
+	public get columns(): number {
+		return this.properties['columns'];
+	}
+	public set columns(v: number) {
+		this.setProperty('columns', v);
+	}
+
 	public get width(): number {
 		return this.properties['width'];
 	}
 	public set width(v: number) {
 		this.setProperty('width', v);
+	}
+
+	public get multiline(): boolean {
+		return this.properties['multiline'];
+	}
+	public set multiline(v: boolean) {
+		this.setProperty('multiline', v);
 	}
 
 	public get inputType(): sqlops.InputBoxInputType {
@@ -750,6 +792,35 @@ class DropDownWrapper extends ComponentWrapper implements sqlops.DropDownCompone
 	}
 
 	public get onValueChanged(): vscode.Event<any> {
+		let emitter = this._emitterMap.get(ComponentEventType.onDidChange);
+		return emitter && emitter.event;
+	}
+}
+
+class DeclarativeTableWrapper extends ComponentWrapper implements sqlops.DeclarativeTableComponent {
+
+	constructor(proxy: MainThreadModelViewShape, handle: number, id: string) {
+		super(proxy, handle, ModelComponentTypes.DeclarativeTable, id);
+		this.properties = {};
+		this._emitterMap.set(ComponentEventType.onDidChange, new Emitter<any>());
+	}
+
+	public get data(): any[][] {
+		return this.properties['data'];
+	}
+	public set data(v: any[][]) {
+		this.setProperty('data', v);
+	}
+
+	public get columns(): sqlops.DeclarativeTableColumn[] {
+		return this.properties['columns'];
+	}
+
+	public set columns(v: sqlops.DeclarativeTableColumn[]) {
+		this.setProperty('columns', v);
+	}
+
+	public get onDataChanged(): vscode.Event<any> {
 		let emitter = this._emitterMap.get(ComponentEventType.onDidChange);
 		return emitter && emitter.event;
 	}
