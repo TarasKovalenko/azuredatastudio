@@ -216,6 +216,11 @@ declare module 'sqlops' {
 		 * Container Width
 		 */
 		width?: number | string;
+
+		/**
+		 *
+		 */
+		textAlign?: string
 	}
 
 	export interface FlexItemLayout {
@@ -232,7 +237,8 @@ declare module 'sqlops' {
 
 	export interface FormItemLayout {
 		horizontal?: boolean;
-		componentWidth?: number;
+		componentWidth?: number | string;
+		componentHeight?: number | string;
 	}
 
 	export interface FormLayout {
@@ -304,8 +310,8 @@ declare module 'sqlops' {
 	export type InputBoxInputType = 'color' | 'date' | 'datetime-local' | 'email' | 'month' | 'number' | 'password' | 'range' | 'search' | 'text' | 'time' | 'url' | 'week';
 
 	export interface ComponentProperties {
-		height: number | string;
-		width: number | string;
+		height?: number | string;
+		width?: number | string;
 	}
 
 	export interface InputBoxProperties extends ComponentProperties {
@@ -354,7 +360,7 @@ declare module 'sqlops' {
 	}
 
 	export interface DropDownProperties extends ComponentProperties {
-		value?: string;
+		value?: string | CategoryValue;
 		values?: string[] | CategoryValue[];
 		editable?: boolean;
 	}
@@ -418,7 +424,7 @@ declare module 'sqlops' {
 	}
 
 	export interface DropDownComponent extends Component, DropDownProperties {
-		value: string;
+		value: string | CategoryValue;
 		values: string[] | CategoryValue[];
 		onValueChanged: vscode.Event<any>;
 	}
