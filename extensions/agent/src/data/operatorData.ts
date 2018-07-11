@@ -6,9 +6,10 @@
 
 import * as sqlops from 'sqlops';
 import { AgentUtils } from '../agentUtils';
-import { IAgentDialogData } from '../interfaces';
+import { IAgentDialogData, AgentDialogMode } from '../interfaces';
 
 export class OperatorData implements IAgentDialogData {
+	public dialogMode: AgentDialogMode = AgentDialogMode.CREATE;
 	ownerUri: string;
 	name: string;
 	id: number;
@@ -28,8 +29,14 @@ export class OperatorData implements IAgentDialogData {
 	weekdayPagerStartTime: string;
 	weekdayPagerEndTime: string;
 
-	constructor(ownerUri:string) {
+	constructor(ownerUri:string, operatorInfo: sqlops.AgentOperatorInfo) {
 		this.ownerUri = ownerUri;
+
+		if (operatorInfo) {
+			this.dialogMode = AgentDialogMode.EDIT;
+			this.name = operatorInfo.name;
+			this.enabled = operatorInfo.enabled;
+		}
 	}
 
 	public async initialize() {

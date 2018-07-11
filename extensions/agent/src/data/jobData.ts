@@ -6,7 +6,7 @@
 
 import * as sqlops from 'sqlops';
 import { AgentUtils } from '../agentUtils';
-import { IAgentDialogData } from '../interfaces';
+import { IAgentDialogData, AgentDialogMode } from '../interfaces';
 
 export class JobData implements IAgentDialogData {
 
@@ -23,6 +23,7 @@ export class JobData implements IAgentDialogData {
 	private _defaultOwner: string;
 	private _jobCompletionActionConditions: sqlops.CategoryValue[];
 
+	public dialogMode: AgentDialogMode = AgentDialogMode.CREATE;
 	public name: string;
 	public enabled: boolean = true;
 	public description: string;
@@ -39,8 +40,17 @@ export class JobData implements IAgentDialogData {
 	public jobSchedules: sqlops.AgentJobScheduleInfo[];
 	public alerts: sqlops.AgentAlertInfo[];
 
-	constructor(ownerUri: string, private _agentService: sqlops.AgentServicesProvider = null) {
+	constructor(
+		ownerUri: string,
+		jobInfo: sqlops.AgentJobInfo = undefined,
+		private _agentService: sqlops.AgentServicesProvider = undefined) {
+
 		this._ownerUri = ownerUri;
+		if (jobInfo) {
+			this.dialogMode = AgentDialogMode.EDIT;
+			this.name = jobInfo.name;
+			this.enabled = jobInfo.enabled;
+		}
 	}
 
 	public get jobCategories(): string[] {

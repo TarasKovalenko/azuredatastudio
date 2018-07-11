@@ -16,7 +16,8 @@ const localize = nls.loadMessageBundle();
 export class OperatorDialog extends AgentDialog<OperatorData> {
 
 	// Top level
-	private static readonly DialogTitle: string = localize('createOperator.createOperator', 'Create Operator');
+	private static readonly CreateDialogTitle: string = localize('createOperator.createOperator', 'Create Operator');
+	private static readonly EditDialogTitle: string = localize('createOperator.editOperator', 'Edit Operator');
 	private static readonly GeneralTabText: string = localize('createOperator.General', 'General');
 	private static readonly NotificationsTabText: string = localize('createOperator.Notifications', 'Notifications');
 
@@ -65,8 +66,11 @@ export class OperatorDialog extends AgentDialog<OperatorData> {
 	// Notification tab controls
 	private alertsTable: sqlops.TableComponent;
 
-	constructor(ownerUri: string) {
-		super(ownerUri, new OperatorData(ownerUri), OperatorDialog.DialogTitle);
+	constructor(ownerUri: string, operatorInfo: sqlops.AgentOperatorInfo = undefined) {
+		super(
+			ownerUri,
+			new OperatorData(ownerUri, operatorInfo),
+			operatorInfo ? OperatorDialog.EditDialogTitle : OperatorDialog.CreateDialogTitle);
 	}
 
 	protected async initializeDialog(dialog: sqlops.window.modelviewdialog.Dialog) {
@@ -81,9 +85,9 @@ export class OperatorDialog extends AgentDialog<OperatorData> {
 
 	private initializeGeneralTab() {
 		this.generalTab.registerContent(async view => {
-			this.nameTextBox = view.modelBuilder.inputBox()
-				.withProperties({ width: '100%' })
-				.component();
+
+			this.nameTextBox = view.modelBuilder.inputBox().component();
+
 			this.enabledCheckBox = view.modelBuilder.checkBox()
 				.withProperties({
 					label: OperatorDialog.EnabledCheckboxLabel

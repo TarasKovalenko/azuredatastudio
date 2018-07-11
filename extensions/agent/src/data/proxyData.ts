@@ -6,9 +6,10 @@
 
 import * as sqlops from 'sqlops';
 import { AgentUtils } from '../agentUtils';
-import { IAgentDialogData } from '../interfaces';
+import { IAgentDialogData, AgentDialogMode } from '../interfaces';
 
 export class ProxyData implements IAgentDialogData {
+	public dialogMode: AgentDialogMode = AgentDialogMode.CREATE;
 	ownerUri: string;
 	id: number;
 	accountName: string;
@@ -18,8 +19,14 @@ export class ProxyData implements IAgentDialogData {
 	credentialId: number;
 	isEnabled: boolean;
 
-	constructor(ownerUri:string) {
+	constructor(ownerUri:string, proxyInfo: sqlops.AgentProxyInfo) {
 		this.ownerUri = ownerUri;
+
+		if (proxyInfo) {
+			this.accountName = proxyInfo.accountName;
+			this.credentialName = proxyInfo.credentialName;
+			this.description = proxyInfo.description;
+		}
 	}
 
 	public async initialize() {

@@ -136,7 +136,7 @@ export class ProxiesViewComponent extends JobManagementView implements OnInit {
 	private onProxiesAvailable(proxies: sqlops.AgentProxyInfo[]) {
 		let items: any = proxies.map((item) => {
 			return {
-				id: item.id,
+				id: item.accountName,
 				accountName: item.accountName,
 				credentialName: item.credentialName
 			};
@@ -164,7 +164,7 @@ export class ProxiesViewComponent extends JobManagementView implements OnInit {
 
 	public openCreateProxyDialog() {
 		let ownerUri: string = this._commonService.connectionManagementService.connectionInfo.ownerUri;
-		this._commandService.executeCommand('agent.openCreateProxyDialog', ownerUri);
+		this._commandService.executeCommand('agent.openProxyDialog', ownerUri);
 	}
 
 	private refreshJobs() {
