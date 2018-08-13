@@ -49,6 +49,13 @@ export default class MainController implements vscode.Disposable {
 			this.openDialog();
 		});
 
+		vscode.commands.registerCommand('sqlservices.openConnectionDialog', async () => {
+			let connection = await sqlops.connection.openConnectionDialog();
+			if (connection) {
+				console.info('Connection Opened: ' + connection.options['server']);
+			}
+		});
+
 		vscode.commands.registerCommand('sqlservices.openEditor', () => {
 			this.openEditor();
 		});
@@ -114,7 +121,17 @@ export default class MainController implements vscode.Disposable {
 		let tree: sqlops.TreeComponent<TreeNode> = view.modelBuilder.tree<TreeNode>().withProperties({
 			'withCheckbox': true
 		}).component();
-		tree.registerDataProvider(treeDataProvider);
+		let treeView = tree.registerDataProvider(treeDataProvider);
+		treeView.onNodeCheckedChanged(item => {
+			if (item && item.element) {
+				item.element.changeNodeCheckedState(item.checked);
+			}
+		});
+		treeView.onDidChangeSelection(selectedNodes => {
+			selectedNodes.forEach(node => {
+				console.info('tree node selected: ' + node.label);
+			});
+		});
 		let formModel = view.modelBuilder.formContainer()
 			.withFormItems([{
 				component: tree,
@@ -150,7 +167,7 @@ export default class MainController implements vscode.Disposable {
 			})
 			.component();
 		checkbox.onChanged(e => {
-			console.info("inputBox.enabled " + inputBox.enabled);
+			console.info('inputBox.enabled ' + inputBox.enabled);
 			inputBox.enabled = !inputBox.enabled;
 		});
 		let button = view.modelBuilder.button()
@@ -368,18 +385,20 @@ export default class MainController implements vscode.Disposable {
 		page1.registerContent(async (view) => {
 			await this.getTabContent(view, customButton1, customButton2, 800);
 		});
-		/*
+
 		wizard.registerOperation({
 			displayName: 'test task',
 			description: 'task description',
-			isCancelable: true
-		}, op => {
-			op.updateStatus(sqlops.TaskStatus.InProgress);
-			op.updateStatus(sqlops.TaskStatus.InProgress, 'Task is running');
-			setTimeout(() => {
-				op.updateStatus(sqlops.TaskStatus.Succeeded);
-			}, 5000);
-		});*/
+			isCancelable: true,
+			connection: undefined,
+			operation: op => {
+				op.updateStatus(sqlops.TaskStatus.InProgress);
+				op.updateStatus(sqlops.TaskStatus.InProgress, 'Task is running');
+				setTimeout(() => {
+					op.updateStatus(sqlops.TaskStatus.Succeeded);
+				}, 5000);
+			}
+		});
 		wizard.pages = [page1, page2];
 		wizard.open();
 	}

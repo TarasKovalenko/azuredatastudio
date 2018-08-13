@@ -42,10 +42,17 @@ declare module 'sqlops' {
 
 	export interface TreeComponentDataProvider<T> extends vscode.TreeDataProvider<T> {
 		getTreeItem(element: T): TreeComponentItem | Thenable<TreeComponentItem>;
-
-		onNodeCheckedChanged?(element: T, checked: boolean): void;
 	}
 
+	export interface NodeCheckedEventParameters<T> {
+		element: T,
+		checked: boolean
+	}
+
+	export interface TreeComponentView<T> extends vscode.Disposable {
+		onNodeCheckedChanged:  vscode.Event<NodeCheckedEventParameters<T>>;
+		onDidChangeSelection:  vscode.Event<T[]>;
+	}
 
 	export class TreeComponentItem extends vscode.TreeItem {
 		checked?: boolean;
@@ -401,7 +408,7 @@ declare module 'sqlops' {
 		label?: string;
 	}
 
-	export interface TreeProperties {
+	export interface TreeProperties extends ComponentProperties {
 		withCheckbox?: boolean;
 	}
 
@@ -531,7 +538,7 @@ declare module 'sqlops' {
 	}
 
 	export interface TreeComponent<T> extends Component, TreeProperties {
-		registerDataProvider<T>(dataProvider: TreeComponentDataProvider<T>): any;
+		registerDataProvider<T>(dataProvider: TreeComponentDataProvider<T>): TreeComponentView<T>;
 	}
 
 	export interface WebViewComponent extends Component {
@@ -1099,7 +1106,7 @@ declare module 'sqlops' {
 		/**
 		 * Connection information
 		 */
-		connection: connection.Connection;
+		connection?: connection.Connection;
 
 		/**
 		 * Operation Display Name
@@ -1146,5 +1153,12 @@ declare module 'sqlops' {
 		 * @param connectionId The ID of the connection
 		 */
 		export function getUriForConnection(connectionId: string): Thenable<string>;
+
+		/**
+		 * Opens the connection dialog, calls the callback with the result. If connection was successful
+		 * returns the connection otherwise returns undefined
+		 * @param callback
+		 */
+		export function openConnectionDialog(provider?: string[]): Thenable<connection.Connection>;
 	}
 }

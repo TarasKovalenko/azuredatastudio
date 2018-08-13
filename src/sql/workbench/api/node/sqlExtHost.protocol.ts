@@ -33,7 +33,9 @@ export abstract class ExtHostAccountManagementShape {
 	$refresh(handle: number, account: sqlops.Account): Thenable<sqlops.Account> { throw ni(); }
 }
 
-export abstract class ExtHostConnectionManagementShape { }
+export abstract class ExtHostConnectionManagementShape {
+	$onConnectionOpened(handleId: string, connection: sqlops.connection.Connection): void { throw ni; }
+ }
 
 export abstract class ExtHostDataProtocolShape {
 
@@ -491,6 +493,7 @@ export interface MainThreadConnectionManagementShape extends IDisposable {
 	$getActiveConnections(): Thenable<sqlops.connection.Connection[]>;
 	$getCurrentConnection(): Thenable<sqlops.connection.Connection>;
 	$getCredentials(connectionId: string): Thenable<{ [name: string]: string }>;
+	$openConnectionDialog(providers: string[]): Thenable<sqlops.connection.Connection>;
 	$listDatabases(connectionId: string): Thenable<string[]>;
 	$getConnectionString(connectionId: string, includePassword: boolean): Thenable<string>;
 	$getUriForConnection(connectionId: string): Thenable<string>;
@@ -604,8 +607,9 @@ export interface ExtHostModelViewShape {
 
 export interface ExtHostModelViewTreeViewsShape {
 	$getChildren(treeViewId: string, treeItemHandle?: string): TPromise<ITreeComponentItem[]>;
-	$createTreeView(handle: number, componentId: string, options: { treeDataProvider: vscode.TreeDataProvider<any> }): vscode.TreeView<any>;
+	$createTreeView(handle: number, componentId: string, options: { treeDataProvider: vscode.TreeDataProvider<any> }): sqlops.TreeComponentView<any>;
 	$onNodeCheckedChanged(treeViewId: string, treeItemHandle?: string, checked?: boolean): void;
+	$onNodeSelected(treeViewId: string, nodes:  string[]): void;
 }
 
 export interface ExtHostBackgroundTaskManagementShape {
