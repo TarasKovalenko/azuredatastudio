@@ -195,6 +195,7 @@ declare module 'sqlops' {
 	}
 
 	export interface IConnectionProfile extends ConnectionInfo {
+		connectionName: string;
 		serverName: string;
 		databaseName: string;
 		userName: string;
@@ -349,6 +350,7 @@ declare module 'sqlops' {
 	}
 
 	export enum ConnectionOptionSpecialType {
+		connectionName = 'connectionName',
 		serverName = 'serverName',
 		databaseName = 'databaseName',
 		authType = 'authType',
@@ -1848,6 +1850,24 @@ declare module 'sqlops' {
 		 * @param {Account} updatedAccount Account object with updated properties
 		 */
 		export function accountUpdated(updatedAccount: Account): void;
+
+		/**
+		 * Gets all added accounts.
+		 * @returns {Thenable<Account>} Promise to return the accounts
+		 */
+		export function getAllAccounts(): Thenable<Account[]>;
+
+		/**
+		 * Generates a security token by asking the account's provider
+		 * @param {Account} account Account to generate security token for
+		 * @return {Thenable<{}>} Promise to return the security token
+		 */
+		export function getSecurityToken(account: Account): Thenable<{}>;
+
+		/**
+		 * An [event](#Event) which fires when the accounts have changed.
+		 */
+		export const onDidChangeAccounts: vscode.Event<DidChangeAccountsParams>;
 	}
 
 	/**
@@ -1913,6 +1933,11 @@ declare module 'sqlops' {
 		 * Indicates if the account needs refreshing
 		 */
 		isStale: boolean;
+	}
+
+	export interface DidChangeAccountsParams {
+		// Updated accounts
+		accounts: Account[];
 	}
 
 	// - ACCOUNT PROVIDER //////////////////////////////////////////////////
