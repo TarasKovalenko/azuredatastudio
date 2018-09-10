@@ -216,10 +216,6 @@ export class GridPanel extends ViewletPanel {
 		}
 	}
 
-	public layout(size: number) {
-		this.splitView.layout(size);
-	}
-
 	private minimizeTables(): void {
 		if (this.maximizedGrid) {
 			this.maximizedGrid.state.maximized = false;
@@ -309,7 +305,13 @@ class GridTable<T> extends Disposable implements IView {
 			});
 		});
 		this.columns.unshift(numberColumn.getColumnDefinition());
-		this.table = this._register(new Table(tableContainer, { dataProvider: new AsyncDataProvider(collection), columns: this.columns }, { rowHeight: ROW_HEIGHT, showRowNumber: true }));
+		let tableOptions: Slick.GridOptions<T> = {
+			rowHeight: ROW_HEIGHT,
+			showRowNumber: true,
+			forceFitColumns: false,
+			defaultColumnWidth: 120
+		};
+		this.table = this._register(new Table(tableContainer, { dataProvider: new AsyncDataProvider(collection), columns: this.columns }, tableOptions));
 		this.table.setSelectionModel(this.selectionModel);
 		this.table.registerPlugin(new MouseWheelSupport());
 		this.table.registerPlugin(new AutoColumnSize());
