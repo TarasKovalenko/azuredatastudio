@@ -764,6 +764,16 @@ declare namespace Slick {
 		**/
 		destroy(): void;
 
+		/**
+		 * Sets selected ranges for the grid
+		 */
+		setSelectedRanges(ranges: Slick.Range[]);
+
+		/**
+		 * Gets selected ranges for the grid
+		 */
+		getSelectedRanges(): Slick.Range[];
+
 		onSelectedRangesChanged: Slick.Event<E>;
 	}
 
@@ -1223,6 +1233,7 @@ declare namespace Slick {
 		public scrollRowIntoView(row: number, doPaging: boolean): void;
 		public scrollRowToTop(row: number): void;
 		public scrollCellIntoView(row: number, cell: number, doPaging: boolean): void;
+		public scrollTo(y: number);
 		public getCanvasNode(): HTMLCanvasElement;
 		public focus(): void;
 

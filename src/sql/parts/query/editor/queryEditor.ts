@@ -43,7 +43,6 @@ import {
 import { IQueryModelService } from 'sql/parts/query/execution/queryModel';
 import { IEditorDescriptorService } from 'sql/parts/query/editor/editorDescriptorService';
 import { IConnectionManagementService } from 'sql/parts/connection/common/connectionManagement';
-import { attachEditableDropdownStyler } from 'sql/common/theme/styler';
 import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
 import { CancellationToken } from 'vs/base/common/cancellation';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
@@ -378,6 +377,26 @@ export class QueryEditor extends BaseEditor {
 		return undefined;
 	}
 
+	public getAllSelection(): ISelectionData {
+		if (this._sqlEditor && this._sqlEditor.getControl()) {
+			let control = this._sqlEditor.getControl();
+			let codeEditor: ICodeEditor = <ICodeEditor>control;
+			if (codeEditor) {
+				let model = codeEditor.getModel();
+				let totalLines = model.getLineCount();
+				let endColumn = model.getLineMaxColumn(totalLines);
+				let selection: ISelectionData = {
+					startLine: 0,
+					startColumn: 0,
+					endLine: totalLines - 1,
+					endColumn: endColumn - 1,
+				};
+				return selection;
+			}
+		}
+		return undefined;
+	}
+
 	public getSelectionText(): string {
 		if (this._sqlEditor && this._sqlEditor.getControl()) {
 			let control = this._sqlEditor.getControl();
@@ -500,7 +519,7 @@ export class QueryEditor extends BaseEditor {
 	public get listDatabasesActionItem(): ListDatabasesActionItem {
 		if (!this._listDatabasesActionItem) {
 			this._listDatabasesActionItem = this._instantiationService.createInstance(ListDatabasesActionItem, this, this._listDatabasesAction);
-			this._register(attachEditableDropdownStyler(this._listDatabasesActionItem, this.themeService));
+			this._register(this._listDatabasesActionItem.attachStyler(this.themeService));
 		}
 		return this._listDatabasesActionItem;
 	}

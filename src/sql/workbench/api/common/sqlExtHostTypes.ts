@@ -131,6 +131,7 @@ export enum FrequencyRelativeIntervals {
 
 export enum ModelComponentTypes {
 	NavContainer,
+	DivContainer,
 	FlexContainer,
 	Card,
 	InputBox,
@@ -151,7 +152,8 @@ export enum ModelComponentTypes {
 	LoadingComponent,
 	TreeComponent,
 	FileBrowserTree,
-	Editor
+	Editor,
+	Dom
 }
 
 export interface IComponentShape {

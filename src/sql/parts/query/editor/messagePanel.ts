@@ -8,7 +8,7 @@ import 'vs/css!./media/messagePanel';
 import { IMessagesActionContext, SelectAllMessagesAction, CopyMessagesAction } from './actions';
 import QueryRunner from 'sql/parts/query/execution/queryRunner';
 
-import { IResultMessage, BatchSummary, ISelectionData } from 'sqlops';
+import { IResultMessage, ISelectionData } from 'sqlops';
 
 import { ViewletPanel, IViewletPanelOptions } from 'vs/workbench/browser/parts/views/panelViewlet';
 import { IDataSource, ITree, IRenderer, ContextMenuEvent } from 'vs/base/parts/tree/browser/tree';
@@ -25,9 +25,8 @@ import { OpenMode, ClickBehavior, ICancelableEvent, IControllerOptions } from 'v
 import { WorkbenchTreeController } from 'vs/platform/list/browser/listService';
 import { IMouseEvent } from 'vs/base/browser/mouseEvent';
 import { $ } from 'vs/base/browser/builder';
-import { isArray } from 'vs/base/common/types';
+import { isArray, isUndefinedOrNull } from 'vs/base/common/types';
 import { IDisposable, dispose } from 'vs/base/common/lifecycle';
-import { localize } from 'vs/nls';
 import { IEditorService } from 'vs/workbench/services/editor/common/editorService';
 import { IEditor } from 'vs/editor/common/editorCommon';
 
@@ -56,8 +55,21 @@ interface IBatchTemplate extends IMessageTemplate {
 const TemplateIds = {
 	MESSAGE: 'message',
 	BATCH: 'batch',
-	MODEL: 'model'
+	MODEL: 'model',
+	ERROR: 'error'
 };
+
+export class MessagePanelState {
+	public scrollPosition: number;
+	public collapsed = false;
+
+	constructor(@IConfigurationService configurationService: IConfigurationService) {
+		let messagesOpenedSettings = configurationService.getValue<boolean>('sql.messagesDefaultOpen');
+		if (!isUndefinedOrNull(messagesOpenedSettings)) {
+			this.collapsed = !messagesOpenedSettings;
+		}
+	}
+}
 
 export class MessagePanel extends ViewletPanel {
 	private ds = new MessageDataSource();
@@ -67,6 +79,7 @@ export class MessagePanel extends ViewletPanel {
 	private container = $('div message-tree').getHTMLElement();
 
 	private queryRunnerDisposables: IDisposable[] = [];
+	private _state: MessagePanelState;
 
 	private tree: ITree;
 
@@ -86,6 +99,16 @@ export class MessagePanel extends ViewletPanel {
 			renderer: this.renderer,
 			controller: this.controller
 		}, { keyboardSupport: false });
+		this.tree.onDidScroll(e => {
+			if (this.state) {
+				this.state.scrollPosition = this.tree.getScrollPosition();
+			}
+		});
+		this.onDidChange(e => {
+			if (this.state) {
+				this.state.collapsed = !this.isExpanded();
+			}
+		});
 	}
 
 	protected renderBody(container: HTMLElement): void {
@@ -99,8 +122,12 @@ export class MessagePanel extends ViewletPanel {
 	protected layoutBody(size: number): void {
 		const previousScrollPosition = this.tree.getScrollPosition();
 		this.tree.layout(size);
-		if (previousScrollPosition === 1) {
-			this.tree.setScrollPosition(1);
+		if (this.state && this.state.scrollPosition) {
+			this.tree.setScrollPosition(this.state.scrollPosition);
+		} else {
+			if (previousScrollPosition === 1) {
+				this.tree.setScrollPosition(1);
+			}
 		}
 	}
 
@@ -113,23 +140,47 @@ export class MessagePanel extends ViewletPanel {
 	}
 
 	private onMessage(message: IResultMessage | IResultMessage[]) {
+		let hasError = false;
 		if (isArray(message)) {
+			hasError = message.find(e => e.isError) ? true : false;
 			this.model.messages.push(...message);
 		} else {
+			hasError = message.isError;
 			this.model.messages.push(message);
 		}
-		const previousScrollPosition = this.tree.getScrollPosition();
-		this.tree.refresh(this.model).then(() => {
-			if (previousScrollPosition === 1) {
+		if (hasError) {
+			this.setExpanded(true);
+		}
+		if (this.state.scrollPosition) {
+			this.tree.refresh(this.model).then(() => {
 				this.tree.setScrollPosition(1);
-			}
-		});
+			});
+		} else {
+			const previousScrollPosition = this.tree.getScrollPosition();
+			this.tree.refresh(this.model).then(() => {
+				if (previousScrollPosition === 1) {
+					this.tree.setScrollPosition(1);
+				}
+			});
+		}
+		this.maximumBodySize = this.model.messages.length * 22;
 	}
 
 	private reset() {
 		this.model.messages = [];
 		this.model.totalExecuteMessage = undefined;
 		this.tree.refresh(this.model);
+	}
+
+	public set state(val: MessagePanelState) {
+		this._state = val;
+		if (this.state.scrollPosition) {
+			this.tree.setScrollPosition(this.state.scrollPosition);
+		}
+		this.setExpanded(!this.state.collapsed);
+	}
+	public get state(): MessagePanelState {
+		return this._state;
 	}
 }
 
@@ -176,6 +227,8 @@ class MessageRenderer implements IRenderer {
 			return TemplateIds.MODEL;
 		} else if (element.selection) {
 			return TemplateIds.BATCH;
+		} else if (element.isError) {
+			return TemplateIds.ERROR;
 		} else {
 			return TemplateIds.MESSAGE;
 		}
@@ -191,15 +244,19 @@ class MessageRenderer implements IRenderer {
 			const timeStamp = $('div.time-stamp').appendTo(container).getHTMLElement();
 			const message = $('div.batch-start').appendTo(container).getHTMLElement();
 			return { message, timeStamp };
+		} else if (templateId === TemplateIds.ERROR) {
+			$('div.time-stamp').appendTo(container);
+			const message = $('div.error-message').appendTo(container).getHTMLElement();
+			return { message };
 		} else {
 			return undefined;
 		}
 	}
 
 	renderElement(tree: ITree, element: IResultMessage, templateId: string, templateData: IMessageTemplate | IBatchTemplate): void {
-		if (templateId === TemplateIds.MESSAGE) {
+		if (templateId === TemplateIds.MESSAGE || templateId === TemplateIds.ERROR) {
 			let data: IMessageTemplate = templateData;
-			data.message.innerText = element.message;
+			data.message.innerText = element.message.replace(/(\r\n|\n|\r)/g, ' ');
 		} else if (templateId === TemplateIds.BATCH) {
 			let data = templateData as IBatchTemplate;
 			data.timeStamp.innerText = element.time;

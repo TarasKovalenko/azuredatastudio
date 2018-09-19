@@ -12,11 +12,13 @@ import { ScrollableSplitView } from 'sql/base/browser/ui/scrollableSplitview/scr
 import { MouseWheelSupport } from 'sql/base/browser/ui/table/plugins/mousewheelTableScroll.plugin';
 import { AutoColumnSize } from 'sql/base/browser/ui/table/plugins/autoSizeColumns.plugin';
 import { SaveFormat } from 'sql/parts/grid/common/interfaces';
-import { IGridActionContext, SaveResultAction, CopyResultAction, SelectAllGridAction, MaximizeTableAction, MinimizeTableAction, ChartDataAction, ShowQueryPlanAction } from 'sql/parts/query/editor/actions';
+import { IGridActionContext, SaveResultAction, CopyResultAction, SelectAllGridAction, MaximizeTableAction, RestoreTableAction, ChartDataAction, ShowQueryPlanAction } from 'sql/parts/query/editor/actions';
 import { CellSelectionModel } from 'sql/base/browser/ui/table/plugins/cellSelectionModel.plugin';
 import { RowNumberColumn } from 'sql/base/browser/ui/table/plugins/rowNumberColumn.plugin';
 import { escape } from 'sql/base/common/strings';
 import { hyperLinkFormatter, textFormatter } from 'sql/parts/grid/services/sharedServices';
+import { CopyKeybind } from 'sql/base/browser/ui/table/plugins/copyKeybind.plugin';
+import { AdditionalKeyBindings } from 'sql/base/browser/ui/table/plugins/additionalKeyBindings.plugin';
 
 import * as sqlops from 'sqlops';
 
@@ -34,25 +36,30 @@ import { $ } from 'vs/base/browser/builder';
 import { generateUuid } from 'vs/base/common/uuid';
 import { TPromise } from 'vs/base/common/winjs.base';
 import { Separator, ActionBar, ActionsOrientation } from 'vs/base/browser/ui/actionbar/actionbar';
-import { Dimension, getContentWidth } from 'vs/base/browser/dom';
+import { Dimension, getContentWidth, isInDOM } from 'vs/base/browser/dom';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
 import { IUntitledEditorService } from 'vs/workbench/services/untitled/common/untitledEditorService';
 import { IEditorService } from 'vs/workbench/services/editor/common/editorService';
-import { CopyKeybind } from 'sql/base/browser/ui/table/plugins/copyKeybind.plugin';
+import { IAction } from 'vs/base/common/actions';
 
 const ROW_HEIGHT = 29;
 const HEADER_HEIGHT = 26;
 const MIN_GRID_HEIGHT_ROWS = 8;
 const ESTIMATED_SCROLL_BAR_HEIGHT = 10;
-const BOTTOM_PADDING = 5;
+const BOTTOM_PADDING = 15;
 const ACTIONBAR_WIDTH = 26;
 
 // minimum height needed to show the full actionbar
 const ACTIONBAR_HEIGHT = 100;
 
 // this handles min size if rows is greater than the min grid visible rows
-const MIN_GRID_HEIGHT = (MIN_GRID_HEIGHT_ROWS * ROW_HEIGHT) + HEADER_HEIGHT + ESTIMATED_SCROLL_BAR_HEIGHT + BOTTOM_PADDING;
+const MIN_GRID_HEIGHT = (MIN_GRID_HEIGHT_ROWS * ROW_HEIGHT) + HEADER_HEIGHT + ESTIMATED_SCROLL_BAR_HEIGHT;
 
+export class GridPanelState {
+	public tableStates: GridTableState[] = [];
+	public scrollPosition: number;
+	public collapsed = false;
+}
 
 export interface IGridTableState {
 	canBeMaximized: boolean;
@@ -66,13 +73,29 @@ export class GridTableState {
 	private _onMaximizedChange = new Emitter<boolean>();
 	public onMaximizedChange: Event<boolean> = this._onMaximizedChange.event;
 
-	public canBeMaximized: boolean;
+	private _onCanBeMaximizedChange = new Emitter<boolean>();
+	public onCanBeMaximizedChange: Event<boolean> = this._onCanBeMaximizedChange.event;
 
-	constructor(state?: IGridTableState) {
-		if (state) {
-			this._maximized = state.maximized;
-			this.canBeMaximized = state.canBeMaximized;
+	private _canBeMaximized: boolean;
+
+	/* The top row of the current scroll */
+	public scrollPosition = 0;
+	public selection: Slick.Range[];
+	public activeCell: Slick.Cell;
+
+	constructor(public readonly resultId: number, public readonly batchId: number) {
+	}
+
+	public get canBeMaximized(): boolean {
+		return this._canBeMaximized;
+	}
+
+	public set canBeMaximized(val: boolean) {
+		if (val === this._canBeMaximized) {
+			return;
 		}
+		this._canBeMaximized = val;
+		this._onCanBeMaximizedChange.fire(val);
 	}
 
 	public get maximized(): boolean {
@@ -85,10 +108,6 @@ export class GridTableState {
 		}
 		this._maximized = val;
 		this._onMaximizedChange.fire(val);
-	}
-
-	public clone(): GridTableState {
-		return new GridTableState({ canBeMaximized: this.canBeMaximized, maximized: this.maximized });
 	}
 }
 
@@ -103,6 +122,7 @@ export class GridPanel extends ViewletPanel {
 	private runner: QueryRunner;
 
 	private maximizedGrid: GridTable<any>;
+	private _state: GridPanelState;
 
 	constructor(
 		options: IViewletPanelOptions,
@@ -114,6 +134,16 @@ export class GridPanel extends ViewletPanel {
 	) {
 		super(options, keybindingService, contextMenuService, configurationService);
 		this.splitView = new ScrollableSplitView(this.container, { enableResizing: false });
+		this.splitView.onScroll(e => {
+			if (this.state) {
+				this.state.scrollPosition = e;
+			}
+		});
+		this.onDidChange(e => {
+			if (this.state) {
+				this.state.collapsed = !this.isExpanded();
+			}
+		});
 	}
 
 	protected renderBody(container: HTMLElement): void {
@@ -138,7 +168,12 @@ export class GridPanel extends ViewletPanel {
 		this.queryRunnerDisposables = [];
 		this.runner = runner;
 		this.queryRunnerDisposables.push(this.runner.onResultSet(e => this.onResultSet(e)));
-		this.queryRunnerDisposables.push(this.runner.onQueryStart(() => this.reset()));
+		this.queryRunnerDisposables.push(this.runner.onQueryStart(() => {
+			if (this.state) {
+				this.state.tableStates = [];
+			}
+			this.reset();
+		}));
 	}
 
 	private onResultSet(resultSet: sqlops.ResultSetSummary | sqlops.ResultSetSummary[]) {
@@ -151,6 +186,10 @@ export class GridPanel extends ViewletPanel {
 		this.maximumBodySize = this.tables.reduce((p, c) => {
 			return p + c.maximumSize;
 		}, 0);
+
+		if (this.state && this.state.scrollPosition) {
+			this.splitView.setScrollPosition(this.state.scrollPosition);
+		}
 	}
 
 	private addResultSet(resultSet: sqlops.ResultSetSummary | sqlops.ResultSetSummary[]) {
@@ -164,8 +203,18 @@ export class GridPanel extends ViewletPanel {
 		let tables: GridTable<any>[] = [];
 
 		for (let set of resultsToAdd) {
-			let tableState = new GridTableState();
-			let table = this.instantiationService.createInstance(GridTable, this.runner, tableState, set);
+			let tableState: GridTableState;
+			if (this._state) {
+				tableState = this.state.tableStates.find(e => e.batchId === set.batchId && e.resultId === set.id);
+			}
+			if (!tableState) {
+				tableState = new GridTableState(set.id, set.batchId);
+				if (this._state) {
+					this._state.tableStates.push(tableState);
+				}
+			}
+			let table = this.instantiationService.createInstance(GridTable, this.runner, set);
+			table.state = tableState;
 			tableState.onMaximizedChange(e => {
 				if (e) {
 					this.maximizeTable(table.id);
@@ -191,7 +240,6 @@ export class GridPanel extends ViewletPanel {
 		for (let i = this.splitView.length - 1; i >= 0; i--) {
 			this.splitView.removeView(i);
 		}
-
 		dispose(this.tables);
 		this.tables = [];
 
@@ -224,6 +272,24 @@ export class GridPanel extends ViewletPanel {
 			this.splitView.addViews(this.tables, this.tables.map(i => i.minimumSize));
 		}
 	}
+
+	public set state(val: GridPanelState) {
+		this._state = val;
+		this.tables.map(t => {
+			let state = this.state.tableStates.find(s => s.batchId === t.resultSet.batchId && s.resultId === t.resultSet.id);
+			if (!state) {
+				this.state.tableStates.push(t.state);
+			}
+			if (state) {
+				t.state = state;
+			}
+		});
+		this.setExpanded(!this.state.collapsed);
+	}
+
+	public get state(): GridPanelState {
+		return this._state;
+	}
 }
 
 class GridTable<T> extends Disposable implements IView {
@@ -242,13 +308,16 @@ class GridTable<T> extends Disposable implements IView {
 	public id = generateUuid();
 	readonly element: HTMLElement = this.container;
 
+	private _state: GridTableState;
+
+	private scrolled = false;
+
 	// this handles if the row count is small, like 4-5 rows
-	private readonly maxSize = ((this.resultSet.rowCount) * ROW_HEIGHT) + HEADER_HEIGHT + ESTIMATED_SCROLL_BAR_HEIGHT + BOTTOM_PADDING;
+	private readonly maxSize = ((this.resultSet.rowCount) * ROW_HEIGHT) + HEADER_HEIGHT + ESTIMATED_SCROLL_BAR_HEIGHT;
 
 	constructor(
 		private runner: QueryRunner,
-		public state: GridTableState,
-		private resultSet: sqlops.ResultSetSummary,
+		public readonly resultSet: sqlops.ResultSetSummary,
 		@IContextMenuService private contextMenuService: IContextMenuService,
 		@IInstantiationService private instantiationService: IInstantiationService,
 		@IEditorService private editorService: IEditorService,
@@ -257,7 +326,7 @@ class GridTable<T> extends Disposable implements IView {
 		super();
 		this.container.style.width = '100%';
 		this.container.style.height = '100%';
-		this.container.style.marginBottom = BOTTOM_PADDING + 'px';
+		// this.container.style.marginBottom = BOTTOM_PADDING + 'px';
 		this.container.className = 'grid-panel';
 
 		this.columns = this.resultSet.columnInfo.map((c, i) => {
@@ -272,6 +341,11 @@ class GridTable<T> extends Disposable implements IView {
 				formatter: isLinked ? hyperLinkFormatter : textFormatter
 			};
 		});
+	}
+
+	public onRemove() {
+		// when we are removed slickgrid acts badly so we need to account for that
+		this.scrolled = false;
 	}
 
 	public render(container: HTMLElement, orientation: Orientation): void {
@@ -294,15 +368,7 @@ class GridTable<T> extends Disposable implements IView {
 		let numberColumn = new RowNumberColumn({ numberOfRows: this.resultSet.rowCount });
 		let copyHandler = new CopyKeybind();
 		copyHandler.onCopy(e => {
-			new CopyResultAction(CopyResultAction.COPY_ID, CopyResultAction.COPY_LABEL, false).run({
-				selection: e,
-				batchId: this.resultSet.batchId,
-				resultId: this.resultSet.id,
-				cell: this.table.grid.getActiveCell(),
-				runner: this.runner,
-				table: this.table,
-				tableState: this.state
-			});
+			new CopyResultAction(CopyResultAction.COPY_ID, CopyResultAction.COPY_LABEL, false).run(this.generateContext());
 		});
 		this.columns.unshift(numberColumn.getColumnDefinition());
 		let tableOptions: Slick.GridOptions<T> = {
@@ -317,6 +383,7 @@ class GridTable<T> extends Disposable implements IView {
 		this.table.registerPlugin(new AutoColumnSize());
 		this.table.registerPlugin(copyHandler);
 		this.table.registerPlugin(numberColumn);
+		this.table.registerPlugin(new AdditionalKeyBindings());
 		this._register(this.table.onContextMenu(this.contextMenu, this));
 		this._register(this.table.onClick(this.onTableClick, this));
 
@@ -324,22 +391,7 @@ class GridTable<T> extends Disposable implements IView {
 			this.table.style(this.styles);
 		}
 
-		let actions = [];
-
-		if (this.state.canBeMaximized) {
-			if (this.state.maximized) {
-				actions.splice(1, 0, new MinimizeTableAction());
-			} else {
-				actions.splice(1, 0, new MaximizeTableAction());
-			}
-		}
-
-		actions.push(
-			new SaveResultAction(SaveResultAction.SAVECSV_ID, SaveResultAction.SAVECSV_LABEL, SaveResultAction.SAVECSV_ICON, SaveFormat.CSV),
-			new SaveResultAction(SaveResultAction.SAVEEXCEL_ID, SaveResultAction.SAVEEXCEL_LABEL, SaveResultAction.SAVEEXCEL_ICON, SaveFormat.EXCEL),
-			new SaveResultAction(SaveResultAction.SAVEJSON_ID, SaveResultAction.SAVEJSON_LABEL, SaveResultAction.SAVEJSON_ICON, SaveFormat.JSON),
-			this.instantiationService.createInstance(ChartDataAction)
-		);
+		let actions = this.getCurrentActions();
 
 		let actionBarContainer = document.createElement('div');
 		actionBarContainer.style.width = ACTIONBAR_WIDTH + 'px';
@@ -356,7 +408,65 @@ class GridTable<T> extends Disposable implements IView {
 				tableState: this.state
 			}
 		});
+		// update context before we run an action
+		this.selectionModel.onSelectedRangesChanged.subscribe(e => {
+			this.actionBar.context = this.generateContext();
+		});
 		this.actionBar.push(actions, { icon: true, label: false });
+
+		this.selectionModel.onSelectedRangesChanged.subscribe(e => {
+			if (this.state) {
+				this.state.selection = this.selectionModel.getSelectedRanges();
+			}
+		});
+
+		this.table.grid.onScroll.subscribe((e, data) => {
+			if (!this.scrolled && this.state.scrollPosition && isInDOM(this.container)) {
+				this.scrolled = true;
+				this.table.grid.scrollTo(this.state.scrollPosition);
+			}
+			if (this.state && isInDOM(this.container)) {
+				this.state.scrollPosition = data.scrollTop;
+			}
+		});
+
+		this.table.grid.onActiveCellChanged.subscribe(e => {
+			if (this.state) {
+				this.state.activeCell = this.table.grid.getActiveCell();
+			}
+		});
+
+		this.setupState();
+	}
+
+	private setupState() {
+		// change actionbar on maximize change
+		this.state.onMaximizedChange(this.rebuildActionBar, this);
+
+		this.state.onCanBeMaximizedChange(this.rebuildActionBar, this);
+
+		if (this.state.scrollPosition) {
+			// most of the time this won't do anything
+			this.table.grid.scrollTo(this.state.scrollPosition);
+			// the problem here is that the scrolling state slickgrid uses
+			// doesn't work with it offDOM.
+		}
+
+		if (this.state.selection) {
+			this.selectionModel.setSelectedRanges(this.state.selection);
+		}
+
+		if (this.state.activeCell) {
+			this.table.setActiveCell(this.state.activeCell.row, this.state.activeCell.cell);
+		}
+	}
+
+	public get state(): GridTableState {
+		return this._state;
+	}
+
+	public set state(val: GridTableState) {
+		this._state = val;
 	}
 
 	private onTableClick(event: ITableMouseEvent) {
@@ -372,6 +482,48 @@ class GridTable<T> extends Disposable implements IView {
 		}
 	}
 
+	private generateContext(cell?: Slick.Cell): IGridActionContext {
+		const selection = this.selectionModel.getSelectedRanges();
+		return <IGridActionContext>{
+			cell,
+			selection,
+			runner: this.runner,
+			batchId: this.resultSet.batchId,
+			resultId: this.resultSet.id,
+			table: this.table,
+			tableState: this.state,
+			selectionModel: this.selectionModel
+		};
+	}
+
+	private rebuildActionBar() {
+		let actions = this.getCurrentActions();
+		this.actionBar.clear();
+		this.actionBar.push(actions, { icon: true, label: false });
+	}
+
+	private getCurrentActions(): IAction[] {
+
+		let actions = [];
+
+		if (this.state.canBeMaximized) {
+			if (this.state.maximized) {
+				actions.splice(1, 0, new RestoreTableAction());
+			} else {
+				actions.splice(1, 0, new MaximizeTableAction());
+			}
+		}
+
+		actions.push(
+			new SaveResultAction(SaveResultAction.SAVECSV_ID, SaveResultAction.SAVECSV_LABEL, SaveResultAction.SAVECSV_ICON, SaveFormat.CSV),
+			new SaveResultAction(SaveResultAction.SAVEEXCEL_ID, SaveResultAction.SAVEEXCEL_LABEL, SaveResultAction.SAVEEXCEL_ICON, SaveFormat.EXCEL),
+			new SaveResultAction(SaveResultAction.SAVEJSON_ID, SaveResultAction.SAVEJSON_LABEL, SaveResultAction.SAVEJSON_ICON, SaveFormat.JSON),
+			this.instantiationService.createInstance(ChartDataAction)
+		);
+
+		return actions;
+	}
+
 	public layout(size?: number): void {
 		if (!this.table) {
 			this.build();
@@ -384,24 +536,27 @@ class GridTable<T> extends Disposable implements IView {
 		this.table.layout(
 			new Dimension(
 				getContentWidth(this.container) - ACTIONBAR_WIDTH,
-				size - BOTTOM_PADDING
+				size
 			)
 		);
 	}
 
 	public get minimumSize(): number {
 		// clamp between ensuring we can show the actionbar, while also making sure we don't take too much space
-		return Math.max(Math.min(this.maxSize, MIN_GRID_HEIGHT), ACTIONBAR_HEIGHT);
+		return Math.max(Math.min(this.maxSize, MIN_GRID_HEIGHT), ACTIONBAR_HEIGHT + BOTTOM_PADDING);
 	}
 
 	public get maximumSize(): number {
-		return Math.max(this.maxSize, ACTIONBAR_HEIGHT);
+		return Math.max(this.maxSize, ACTIONBAR_HEIGHT + BOTTOM_PADDING);
 	}
 
 	private loadData(offset: number, count: number): Thenable<T[]> {
 		return this.runner.getQueryRows(offset, count, this.resultSet.batchId, this.resultSet.id).then(response => {
 			if (this.runner.isQueryPlan) {
-				this.instantiationService.createInstance(ShowQueryPlanAction).run(response.resultSubset.rows[0][0].displayValue);
+				// it's a show plan response
+				if (response.resultSubset.rowCount === 1) {
+					this.instantiationService.createInstance(ShowQueryPlanAction).run(response.resultSubset.rows[0][0].displayValue);
+				}
 			}
 			return response.resultSubset.rows.map(r => {
 				let dataWithSchema = {};
@@ -419,7 +574,6 @@ class GridTable<T> extends Disposable implements IView {
 	}
 
 	private contextMenu(e: ITableMouseEvent): void {
-		const selection = this.selectionModel.getSelectedRanges();
 		const { cell } = e;
 		this.contextMenuService.showContextMenu({
 			getAnchor: () => e.anchor,
@@ -437,7 +591,7 @@ class GridTable<T> extends Disposable implements IView {
 
 				if (this.state.canBeMaximized) {
 					if (this.state.maximized) {
-						actions.splice(1, 0, new MinimizeTableAction());
+						actions.splice(1, 0, new RestoreTableAction());
 					} else {
 						actions.splice(1, 0, new MaximizeTableAction());
 					}
@@ -446,15 +600,7 @@ class GridTable<T> extends Disposable implements IView {
 				return TPromise.as(actions);
 			},
 			getActionsContext: () => {
-				return <IGridActionContext>{
-					cell,
-					selection,
-					runner: this.runner,
-					batchId: this.resultSet.batchId,
-					resultId: this.resultSet.id,
-					table: this.table,
-					tableState: this.state
-				};
+				return this.generateContext(cell);
 			}
 		});
 	}

@@ -166,6 +166,10 @@ export class Table<T extends Slick.SlickData> extends Widget implements IThemabl
 		this._grid.setData(this._data, true);
 	}
 
+	getData(): Slick.DataProvider<T> {
+		return this._data;
+	}
+
 	get columns(): Slick.Column<T>[] {
 		return this._grid.getColumns();
 	}
@@ -244,7 +248,6 @@ export class Table<T extends Slick.SlickData> extends Widget implements IThemabl
 			}
 		}
 		this.resizeCanvas();
-		this.autosizeColumns();
 	}
 
 	autosizeColumns() {
