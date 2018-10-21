@@ -10,6 +10,7 @@ import { JobStepDialog } from './jobStepDialog';
 import { PickScheduleDialog } from './pickScheduleDialog';
 import { AlertDialog } from './alertDialog';
 import { AgentDialog } from './agentDialog';
+import { AgentUtils } from '../agentUtils';
 
 const localize = nls.loadMessageBundle();
 
@@ -107,12 +108,14 @@ export class JobDialog extends AgentDialog<JobData>  {
 	// Alert tab controls
 	private alertsTable: sqlops.TableComponent;
 	private newAlertButton: sqlops.ButtonComponent;
+	private isEdit: boolean = false;
 
 	constructor(ownerUri: string, jobInfo: sqlops.AgentJobInfo = undefined) {
 		super(
 			ownerUri,
 			new JobData(ownerUri, jobInfo),
 			jobInfo ? JobDialog.EditDialogTitle : JobDialog.CreateDialogTitle);
+		this.isEdit = jobInfo ? true : false;
 	}
 
 	protected async initializeDialog() {
@@ -234,10 +237,18 @@ export class JobDialog extends AgentDialog<JobData>  {
 				width: 80
 			}).component();
 
+			let stepDialog = new JobStepDialog(this.model.ownerUri, '' , this.model);
+			stepDialog.onSuccess((step) => {
+				if (!this.model.jobSteps) {
+					this.model.jobSteps = [];
+				}
+				this.model.jobSteps.push(step);
+				this.stepsTable.data = this.convertStepsToData(this.model.jobSteps);
+			});
 			this.newStepButton.onDidClick((e)=>{
 				if (this.nameTextBox.value && this.nameTextBox.value.length > 0) {
-					let stepDialog = new JobStepDialog(this.model.ownerUri, this.nameTextBox.value, '' , 1, this.model);
-					stepDialog.openNewStepDialog();
+					stepDialog.jobName = this.nameTextBox.value;
+					stepDialog.openDialog();
 				} else {
 					this.dialog.message = { text: this.BlankJobNameErrorText };
 				}
@@ -262,20 +273,26 @@ export class JobDialog extends AgentDialog<JobData>  {
 				// one step selection
 				if (this.stepsTable.selectedRows.length === 1) {
 					let rowNumber = this.stepsTable.selectedRows[0];
-					let stepData = steps[rowNumber];
+					let stepData = this.model.jobSteps[rowNumber];
 					this.deleteStepButton.enabled = true;
 					this.editStepButton.enabled = true;
-					this.editStepButton.onDidClick((e) => {
-						// implement edit steps
-
-						// let stepDialog = new JobStepDialog(this.model.ownerUri, this.nameTextBox.value, '' , 1, this.model);
-						// stepDialog.openNewStepDialog();
+					this.editStepButton.onDidClick(() => {
+						let stepDialog = new JobStepDialog(this.model.ownerUri, '' , this.model, stepData);
+						stepDialog.openDialog();
 					});
 
-					this.deleteStepButton.onDidClick((e) => {
-						// implement delete steps
-
-
+					this.deleteStepButton.onDidClick(() => {
+						AgentUtils.getAgentService().then((agentService) => {
+							let steps = this.model.jobSteps ? this.model.jobSteps : [];
+							agentService.deleteJobStep(this.ownerUri, stepData).then((result) => {
+								if (result && result.success) {
+									delete steps[rowNumber];
+									this.model.jobSteps = steps;
+									let data = this.convertStepsToData(steps);
+									this.stepsTable.data = data;
+								}
+							});
+						});
 					});
 				}
 			});
@@ -358,12 +375,12 @@ export class JobDialog extends AgentDialog<JobData>  {
 				label: this.PickScheduleButtonString,
 				width: 80
 			}).component();
-
 			this.pickScheduleButton.onDidClick((e)=>{
-				let pickScheduleDialog = new PickScheduleDialog(this.model.ownerUri);
+				let pickScheduleDialog = new PickScheduleDialog(this.model.ownerUri, this.model.name);
 				pickScheduleDialog.onSuccess((dialogModel) => {
 					let selectedSchedule = dialogModel.selectedSchedule;
 					if (selectedSchedule) {
+						selectedSchedule.jobName = this.model.name;
 						this.model.addJobSchedule(selectedSchedule);
 						this.populateScheduleTable();
 					}
@@ -529,7 +546,6 @@ export class JobDialog extends AgentDialog<JobData>  {
 		let result = [];
 		alerts.forEach(alert => {
 			let cols = [];
-			console.log(alert);
 			cols.push(alert.name);
 			cols.push(alert.isEnabled);
 			cols.push(alert.alertType.toString());

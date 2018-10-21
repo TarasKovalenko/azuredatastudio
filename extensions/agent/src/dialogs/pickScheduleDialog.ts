@@ -33,8 +33,8 @@ export class PickScheduleDialog {
 	private _onSuccess: vscode.EventEmitter<PickScheduleData> = new vscode.EventEmitter<PickScheduleData>();
 	public readonly onSuccess: vscode.Event<PickScheduleData> = this._onSuccess.event;
 
-	constructor(ownerUri: string) {
-		this.model = new PickScheduleData(ownerUri);
+	constructor(ownerUri: string, jobName: string) {
+		this.model = new PickScheduleData(ownerUri, jobName);
 	}
 
 	public async showDialog() {
@@ -74,7 +74,6 @@ export class PickScheduleDialog {
 				let data: any[][] = [];
 				for (let i = 0; i < this.model.schedules.length; ++i) {
 					let schedule = this.model.schedules[i];
-					console.log(schedule);
 					data[i] = [ schedule.id, schedule.name, schedule.description ];
 				}
 				this.schedulesTable.data = data;
