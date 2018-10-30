@@ -42,6 +42,7 @@ import { Dropdown } from 'sql/base/browser/ui/editableDropdown/dropdown';
 import { TabbedPanel, PanelTabIdentifier } from 'sql/base/browser/ui/panel/panel';
 import { ServiceOptionType } from 'sql/workbench/api/common/sqlExtHostTypes';
 import { IFileBrowserDialogController } from 'sql/parts/fileBrowser/common/interfaces';
+import { IClipboardService } from 'sql/platform/clipboard/common/clipboardService';
 
 interface FileListElement {
 	logicalFileName: string;
@@ -129,13 +130,14 @@ export class RestoreDialog extends Modal {
 	constructor(
 		optionsMetadata: sqlops.ServiceOption[],
 		@IPartService partService: IPartService,
-		@IThemeService private _themeService: IThemeService,
+		@IThemeService themeService: IThemeService,
 		@IContextViewService private _contextViewService: IContextViewService,
 		@ITelemetryService telemetryService: ITelemetryService,
 		@IContextKeyService contextKeyService: IContextKeyService,
-		@IFileBrowserDialogController private fileBrowserDialogService: IFileBrowserDialogController
+		@IFileBrowserDialogController private fileBrowserDialogService: IFileBrowserDialogController,
+		@IClipboardService clipboardService: IClipboardService
 	) {
-		super(localize('RestoreDialogTitle', 'Restore database'), TelemetryKeys.Restore, partService, telemetryService, contextKeyService, { hasErrors: true, isWide: true, hasSpinner: true });
+		super(localize('RestoreDialogTitle', 'Restore database'), TelemetryKeys.Restore, partService, telemetryService, clipboardService, themeService, contextKeyService, { hasErrors: true, isWide: true, hasSpinner: true });
 		this._restoreTitle = localize('restoreDialog.restoreTitle', 'Restore database');
 		this._databaseTitle = localize('restoreDialog.database', 'Database');
 		this._backupFileTitle = localize('restoreDialog.backupFile', 'Backup file');
