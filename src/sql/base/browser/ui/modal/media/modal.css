@@ -56,6 +56,7 @@
 
 .modal .modal-title {
 	font-size: 15px;
+	font-weight: 600;
 }
 
 .modal .modal-title-icon {
@@ -66,14 +67,11 @@
 }
 
 .monaco-shell .modal.flyout-dialog .modal-body,
-.monaco-shell .modal.flyout-dialog .angular-modal-body {
-	margin-bottom: auto;
-	height: 100%;
-}
-
+.monaco-shell .modal.flyout-dialog .angular-modal-body,
 /* Style for body and footer in modal dialog. This should be applied to dialog created with angular component. */
 .monaco-shell .modal.flyout-dialog .modal-body-and-footer {
-	height: 100%;
+	flex: 1 1;
+	overflow: hidden;
 }
 
 /* modl body content style(excluding dialogErrorMessage section) for angulr component dialog */
@@ -85,6 +83,8 @@
 
 .modal.flyout-dialog .angular-form {
 	height: 100%;
+	display: flex;
+	flex-direction: column;
 }
 
 .modal.flyout-dialog .dialog-label {
@@ -103,10 +103,6 @@
 	border: none;
 	height: 25px;
 	padding-left: 4px;
-}
-
-.modal.flyout-dialog .modal-body {
-	overflow-y: auto;
 }
 
 .vs-dark.monaco-shell .modal.flyout-dialog .input {
@@ -152,7 +148,7 @@
 }
 
 .modal .footer-button {
-	margin-right: 5px;
+	margin-left: 5px;
 }
 
 .modal .right-footer .footer-button:last-of-type {
@@ -187,7 +183,6 @@
 
 .modal.flyout-dialog .dialog-message-header {
 	overflow: hidden;
-	overflow-y: hidden;
 	display: flex;
 	flex-direction: row;
 }

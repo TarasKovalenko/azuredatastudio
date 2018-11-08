@@ -27,7 +27,7 @@ import { IThemeService } from 'vs/platform/theme/common/themeService';
 
 export const MODAL_SHOWING_KEY = 'modalShowing';
 export const MODAL_SHOWING_CONTEXT = new RawContextKey<Array<string>>(MODAL_SHOWING_KEY, []);
-const INFO_ALT_TEXT = localize('infoAltText', 'Infomation');
+const INFO_ALT_TEXT = localize('infoAltText', 'Information');
 const WARNING_ALT_TEXT = localize('warningAltText', 'Warning');
 const ERROR_ALT_TEXT = localize('errorAltText', 'Error');
 const SHOW_DETAILS_TEXT = localize('showMessageDetails', 'Show Details');
@@ -72,8 +72,8 @@ const defaultOptions: IModalOptions = {
 };
 
 export abstract class Modal extends Disposable implements IThemable {
-
-	private _messageElement: HTMLElement;
+	protected _useDefaultMessageBoxLocation: boolean = true;
+	protected _messageElement: HTMLElement;
 	private _messageIcon: HTMLElement;
 	private _messageSeverity: Builder;
 	private _messageSummary: Builder;
@@ -253,7 +253,9 @@ export abstract class Modal extends Disposable implements IThemable {
 			this._messageElement = this._modalMessageSection.getHTMLElement();
 			this.updateElementVisibility(this._messageElement, false);
 
-			parts.push(this._messageElement);
+			if (this._useDefaultMessageBoxLocation) {
+				parts.push(this._messageElement);
+			}
 		}
 
 		// This modal body section refers to the body of of the dialog

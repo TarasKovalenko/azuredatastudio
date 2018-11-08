@@ -35,6 +35,10 @@ export class ChartState {
 	options: IInsightOptions = {
 		type: ChartType.Bar
 	};
+
+	dispose() {
+
+	}
 }
 
 declare class Proxy {
@@ -132,6 +136,15 @@ export class ChartView extends Disposable implements IPanelView {
 			this.createOption(o, generalControls);
 		});
 		this.buildOptions();
+	}
+
+	public clear() {
+
+	}
+
+	public dispose() {
+		dispose(this.optionDisposables);
+		super.dispose();
 	}
 
 	render(container: HTMLElement): void {
@@ -326,7 +339,7 @@ export class ChartView extends Disposable implements IPanelView {
 				this.optionDisposables.push(attachInputBoxStyler(numberInput, this._themeService));
 				break;
 			case ControlType.dateInput:
-				let dateInput = new InputBox(optionContainer, this._contextViewService, { type: 'date' });
+				let dateInput = new InputBox(optionContainer, this._contextViewService, { type: 'datetime-local' });
 				dateInput.value = value || '';
 				dateInput.onDidChange(e => {
 					if (this.options[option.configEntry] !== e) {
