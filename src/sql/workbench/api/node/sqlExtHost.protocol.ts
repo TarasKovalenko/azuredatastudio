@@ -21,8 +21,10 @@ import { ITreeComponentItem } from 'sql/workbench/common/views';
 import { ITaskHandlerDescription } from 'sql/platform/tasks/common/tasks';
 import {
 	IItemConfig, ModelComponentTypes, IComponentShape, IModelViewDialogDetails, IModelViewTabDetails, IModelViewButtonDetails,
-	IModelViewWizardDetails, IModelViewWizardPageDetails, INotebookManagerDetails, INotebookSessionDetails, INotebookKernelDetails, INotebookFutureDetails, FutureMessageType, INotebookFutureDone
+	IModelViewWizardDetails, IModelViewWizardPageDetails, INotebookManagerDetails, INotebookSessionDetails, INotebookKernelDetails, INotebookFutureDetails, FutureMessageType, INotebookFutureDone, ISingleNotebookEditOperation
 } from 'sql/workbench/api/common/sqlExtHostTypes';
+import { EditorViewColumn } from 'vs/workbench/api/shared/editor';
+import { IUndoStopOptions } from 'vs/workbench/api/node/extHost.protocol';
 
 export abstract class ExtHostAccountManagementShape {
 	$autoOAuthCancelled(handle: number): Thenable<void> { throw ni(); }
@@ -193,7 +195,11 @@ export abstract class ExtHostDataProtocolShape {
 	/**
 	 * Callback when a result set has been returned from query execution and can be displayed
 	 */
-	$onResultSetComplete(handle: number, resultSetInfo: sqlops.QueryExecuteResultSetCompleteNotificationParams): void { throw ni(); }
+	$onResultSetAvailable(handle: number, resultSetInfo: sqlops.QueryExecuteResultSetNotificationParams): void { throw ni(); }
+	/**
+	 * Callback when a result set has been returned from query execution and can be displayed
+	 */
+	$onResultSetUpdate(handle: number, resultSetInfo: sqlops.QueryExecuteResultSetNotificationParams): void { throw ni(); }
 	/**
 	 * Callback when a message generated during query execution is issued
 	 */
@@ -504,7 +510,8 @@ export interface MainThreadDataProtocolShape extends IDisposable {
 	$onQueryComplete(handle: number, result: sqlops.QueryExecuteCompleteNotificationResult): void;
 	$onBatchStart(handle: number, batchInfo: sqlops.QueryExecuteBatchNotificationParams): void;
 	$onBatchComplete(handle: number, batchInfo: sqlops.QueryExecuteBatchNotificationParams): void;
-	$onResultSetComplete(handle: number, resultSetInfo: sqlops.QueryExecuteResultSetCompleteNotificationParams): void;
+	$onResultSetAvailable(handle: number, resultSetInfo: sqlops.QueryExecuteResultSetNotificationParams): void;
+	$onResultSetUpdated(handle: number, resultSetInfo: sqlops.QueryExecuteResultSetNotificationParams): void;
 	$onQueryMessage(handle: number, message: sqlops.QueryExecuteMessageParams): void;
 	$onObjectExplorerSessionCreated(handle: number, message: sqlops.ObjectExplorerSession): void;
 	$onObjectExplorerSessionDisconnected(handle: number, message: sqlops.ObjectExplorerSession): void;
@@ -567,7 +574,9 @@ export const SqlMainContext = {
 	MainThreadDashboard: createMainId<MainThreadDashboardShape>('MainThreadDashboard'),
 	MainThreadModelViewDialog: createMainId<MainThreadModelViewDialogShape>('MainThreadModelViewDialog'),
 	MainThreadQueryEditor: createMainId<MainThreadQueryEditorShape>('MainThreadQueryEditor'),
-	MainThreadNotebook: createMainId<MainThreadNotebookShape>('MainThreadNotebook')
+	MainThreadNotebook: createMainId<MainThreadNotebookShape>('MainThreadNotebook'),
+	MainThreadNotebookDocumentsAndEditors: createMainId<MainThreadNotebookDocumentsAndEditorsShape>('MainThreadNotebookDocumentsAndEditors')
+
 };
 
 export const SqlExtHostContext = {
@@ -587,7 +596,8 @@ export const SqlExtHostContext = {
 	ExtHostDashboard: createExtId<ExtHostDashboardShape>('ExtHostDashboard'),
 	ExtHostModelViewDialog: createExtId<ExtHostModelViewDialogShape>('ExtHostModelViewDialog'),
 	ExtHostQueryEditor: createExtId<ExtHostQueryEditorShape>('ExtHostQueryEditor'),
-	ExtHostNotebook: createExtId<ExtHostNotebookShape>('ExtHostNotebook')
+	ExtHostNotebook: createExtId<ExtHostNotebookShape>('ExtHostNotebook'),
+	ExtHostNotebookDocumentsAndEditors: createExtId<ExtHostNotebookDocumentsAndEditorsShape>('ExtHostNotebookDocumentsAndEditors')
 };
 
 export interface MainThreadDashboardShape extends IDisposable {
@@ -707,7 +717,7 @@ export interface ExtHostModelViewDialogShape {
 
 export interface MainThreadModelViewDialogShape extends IDisposable {
 	$openEditor(handle: number, modelViewId: string, title: string, options?: sqlops.ModelViewEditorOptions, position?: vscode.ViewColumn): Thenable<void>;
-	$openDialog(handle: number): Thenable<void>;
+	$openDialog(handle: number, dialogName?: string): Thenable<void>;
 	$closeDialog(handle: number): Thenable<void>;
 	$setDialogDetails(handle: number, details: IModelViewDialogDetails): Thenable<void>;
 	$setTabDetails(handle: number, details: IModelViewTabDetails): Thenable<void>;
@@ -745,8 +755,8 @@ export interface ExtHostNotebookShape {
 	$doStopServer(managerHandle: number): Thenable<void>;
 
 	// Content Manager APIs
-	$getNotebookContents(managerHandle: number, notebookUri: UriComponents): Thenable<sqlops.nb.INotebook>;
-	$save(managerHandle: number, notebookUri: UriComponents, notebook: sqlops.nb.INotebook): Thenable<sqlops.nb.INotebook>;
+	$getNotebookContents(managerHandle: number, notebookUri: UriComponents): Thenable<sqlops.nb.INotebookContents>;
+	$save(managerHandle: number, notebookUri: UriComponents, notebook: sqlops.nb.INotebookContents): Thenable<sqlops.nb.INotebookContents>;
 
 	// Session Manager APIs
 	$refreshSpecs(managerHandle: number): Thenable<sqlops.nb.IAllKernels>;
@@ -775,3 +785,49 @@ export interface MainThreadNotebookShape extends IDisposable {
 	$onFutureDone(futureId: number, done: INotebookFutureDone): void;
 }
 
+export interface INotebookDocumentsAndEditorsDelta {
+	removedDocuments?: UriComponents[];
+	addedDocuments?: INotebookModelAddedData[];
+	removedEditors?: string[];
+	addedEditors?: INotebookEditorAddData[];
+	newActiveEditor?: string;
+}
+
+export interface INotebookModelAddedData {
+	uri: UriComponents;
+	providerId: string;
+	isDirty: boolean;
+	cells: sqlops.nb.NotebookCell[];
+}
+
+export interface INotebookModelChangedData {
+	uri: UriComponents;
+	providerId: string;
+	isDirty: boolean;
+	cells: sqlops.nb.NotebookCell[];
+}
+
+export interface INotebookEditorAddData {
+	id: string;
+	documentUri: UriComponents;
+	editorPosition: EditorViewColumn;
+}
+
+export interface INotebookShowOptions {
+	position?: EditorViewColumn;
+	preserveFocus?: boolean;
+	preview?: boolean;
+	providerId?: string;
+	connectionId?: string;
+}
+
+export interface ExtHostNotebookDocumentsAndEditorsShape {
+	$acceptDocumentsAndEditorsDelta(delta: INotebookDocumentsAndEditorsDelta): void;
+	$acceptModelChanged(strURL: UriComponents, e: INotebookModelChangedData);
+}
+
+export interface MainThreadNotebookDocumentsAndEditorsShape extends IDisposable {
+	$trySaveDocument(uri: UriComponents): Thenable<boolean>;
+	$tryShowNotebookDocument(resource: UriComponents, options: INotebookShowOptions): TPromise<string>;
+	$tryApplyEdits(id: string, modelVersionId: number, edits: ISingleNotebookEditOperation[], opts: IUndoStopOptions): TPromise<boolean>;
+}

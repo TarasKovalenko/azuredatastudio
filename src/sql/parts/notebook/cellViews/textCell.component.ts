@@ -15,6 +15,10 @@ import { ICommandService } from 'vs/platform/commands/common/commands';
 import { ICellModel } from 'sql/parts/notebook/models/modelInterfaces';
 import { ISanitizer, defaultSanitizer } from 'sql/parts/notebook/outputs/sanitizer';
 import { localize } from 'vs/nls';
+import { NotebookModel } from 'sql/parts/notebook/models/notebookModel';
+import { Emitter } from 'vs/base/common/event';
+import URI from 'vs/base/common/uri';
+import { IOpenerService } from 'vs/platform/opener/common/opener';
 
 export const TEXT_SELECTOR: string = 'text-cell-component';
 
@@ -25,34 +29,34 @@ export const TEXT_SELECTOR: string = 'text-cell-component';
 export class TextCellComponent extends CellView implements OnInit, OnChanges {
 	@ViewChild('preview', { read: ElementRef }) private output: ElementRef;
 	@Input() cellModel: ICellModel;
+
+	@Input() set model(value: NotebookModel) {
+		this._model = value;
+	}
+
 	@Input() set activeCellId(value: string) {
 		this._activeCellId = value;
 	}
+
 	private _content: string;
 	private isEditMode: boolean;
 	private _sanitizer: ISanitizer;
-	private _previewCssApplied: boolean = false;
+	private _model: NotebookModel;
 	private _activeCellId: string;
+	private readonly _onDidClickLink = this._register(new Emitter<URI>());
+	public readonly onDidClickLink = this._onDidClickLink.event;
+	protected isLoading: boolean;
 
 	constructor(
 		@Inject(forwardRef(() => CommonServiceInterface)) private _bootstrapService: CommonServiceInterface,
 		@Inject(forwardRef(() => ChangeDetectorRef)) private _changeRef: ChangeDetectorRef,
 		@Inject(IWorkbenchThemeService) private themeService: IWorkbenchThemeService,
-		@Inject(ICommandService) private _commandService: ICommandService
+		@Inject(ICommandService) private _commandService: ICommandService,
+		@Inject(IOpenerService) private readonly openerService: IOpenerService,
 	) {
 		super();
 		this.isEditMode = false;
-	}
-
-	ngOnChanges(changes: { [propKey: string]: SimpleChange }) {
-		this.updatePreview();
-		for (let propName in changes) {
-			if (propName === 'activeCellId') {
-				let changedProp = changes[propName];
-				this._activeCellId = changedProp.currentValue;
-				break;
-			}
-		}
+		this.isLoading = true;
 	}
 
 	//Gets sanitizer from ISanitizer interface
@@ -63,8 +67,38 @@ export class TextCellComponent extends CellView implements OnInit, OnChanges {
 		return this._sanitizer = defaultSanitizer;
 	}
 
+	get model(): NotebookModel {
+		return this._model;
+	}
+
 	get activeCellId(): string {
 		return this._activeCellId;
+	}
+
+	private setLoading(isLoading: boolean): void {
+		this.isLoading = isLoading;
+		this._changeRef.detectChanges();
+	}
+
+	ngOnInit() {
+		this.updatePreview();
+		this.setLoading(false);
+		this._register(this.themeService.onDidColorThemeChange(this.updateTheme, this));
+		this.updateTheme(this.themeService.getColorTheme());
+		this.cellModel.onOutputsChanged(e => {
+			this.updatePreview();
+		});
+	}
+
+	ngOnChanges(changes: { [propKey: string]: SimpleChange }) {
+		for (let propName in changes) {
+			if (propName === 'activeCellId') {
+				let changedProp = changes[propName];
+				this._activeCellId = changedProp.currentValue;
+				this.toggleEditMode(false);
+				break;
+			}
+		}
 	}
 
 	/**
@@ -73,7 +107,7 @@ export class TextCellComponent extends CellView implements OnInit, OnChanges {
 	 * Sanitizes the data to be shown in markdown cell
 	 */
 	private updatePreview() {
-		if (this._content !== this.cellModel.source) {
+		if (this._content !== this.cellModel.source || this.cellModel.source.length === 0) {
 			if (!this.cellModel.source && !this.isEditMode) {
 				(<HTMLElement>this.output.nativeElement).innerHTML = localize('doubleClickEdit', 'Double-click to edit');
 			} else {
@@ -95,14 +129,6 @@ export class TextCellComponent extends CellView implements OnInit, OnChanges {
 		return content;
 	}
 
-	ngOnInit() {
-		this.updatePreview();
-		this._register(this.themeService.onDidColorThemeChange(this.updateTheme, this));
-		this.updateTheme(this.themeService.getColorTheme());
-		this.cellModel.onOutputsChanged(e => {
-			this.updatePreview();
-		});
-	}
 
 	// Todo: implement layout
 	public layout() {
@@ -114,29 +140,13 @@ export class TextCellComponent extends CellView implements OnInit, OnChanges {
 	}
 
 	public handleContentChanged(): void {
-		if (!this._previewCssApplied) {
-			this.updatePreviewCssClass();
-		}
 		this.updatePreview();
 	}
 
-	public toggleEditMode(): void {
-		this.isEditMode = !this.isEditMode;
-		this.updatePreviewCssClass();
+	public toggleEditMode(editMode?: boolean): void {
+		this.isEditMode = editMode !== undefined? editMode : !this.isEditMode;
+
 		this.updatePreview();
 		this._changeRef.detectChanges();
-	}
-
-	// Updates the css class to preview 'div' based on edit mode
-	private updatePreviewCssClass() {
-		let outputElement = <HTMLElement>this.output.nativeElement;
-		if (this.isEditMode && this.cellModel.source) {
-			outputElement.className = 'notebook-preview';
-			this._previewCssApplied = true;
-		}
-		else {
-			outputElement.className = '';
-			this._previewCssApplied = false;
-		}
 	}
 }
