@@ -7,7 +7,7 @@ import 'vs/css!./code';
 import { OnInit, Component, Input, Inject, forwardRef, ElementRef, ChangeDetectorRef, ViewChild, Output, EventEmitter, OnChanges, SimpleChange } from '@angular/core';
 
 import { CommonServiceInterface } from 'sql/services/common/commonServiceInterface.service';
-import { AngularDisposable } from 'sql/base/common/lifecycle';
+import { AngularDisposable } from 'sql/base/node/lifecycle';
 import { QueryTextEditor } from 'sql/parts/modelComponents/queryTextEditor';
 import { CellToggleMoreActions } from 'sql/parts/notebook/cellToggleMoreActions';
 import { ICellModel } from 'sql/parts/notebook/models/modelInterfaces';
@@ -93,11 +93,10 @@ export class CodeComponent extends AngularDisposable implements OnInit, OnChange
 		for (let propName in changes) {
 			if (propName === 'activeCellId') {
 				let changedProp = changes[propName];
-				if (this.cellModel.id === changedProp.currentValue) {
-					this._cellToggleMoreActions.toggle(true, this.moreActionsElementRef, this.model, this.cellModel);
-				}
-				else {
-					this._cellToggleMoreActions.toggle(false, this.moreActionsElementRef, this.model, this.cellModel);
+				let isActive = this.cellModel.id === changedProp.currentValue;
+				this._cellToggleMoreActions.toggle(isActive, this.moreActionsElementRef, this.model, this.cellModel);
+				if (this._editor) {
+					this._editor.toggleEditorSelected(isActive);
 				}
 				break;
 			}
@@ -133,6 +132,8 @@ export class CodeComponent extends AngularDisposable implements OnInit, OnChange
 			this._editorModel = model.textEditorModel;
 			this._modelService.updateModel(this._editorModel, this.cellModel.source);
 		});
+		let isActive = this.cellModel.id === this._activeCellId;
+		this._editor.toggleEditorSelected(isActive);
 
 		this._register(this._editor);
 		this._register(this._editorInput);
@@ -141,6 +142,7 @@ export class CodeComponent extends AngularDisposable implements OnInit, OnChange
 			this.cellModel.source = this._editorModel.getValue();
 			this.onContentChanged.emit();
 		}));
+		this._register(this.model.layoutChanged(this.layout, this));
 		this.layout();
 	}
 
@@ -153,7 +155,7 @@ export class CodeComponent extends AngularDisposable implements OnInit, OnChange
 
 	protected initActionBar() {
 		let context = new CellContext(this.model, this.cellModel);
-		let runCellAction = this._instantiationService.createInstance(RunCellAction);
+		let runCellAction = this._instantiationService.createInstance(RunCellAction, context);
 
 		let taskbar = <HTMLElement>this.toolbarElement.nativeElement;
 		this._actionBar = new Taskbar(taskbar, this.contextMenuService);

@@ -6,22 +6,22 @@
 
 'use strict';
 
+import { nb } from 'sqlops';
+
 import { Event, Emitter } from 'vs/base/common/event';
 import URI from 'vs/base/common/uri';
+import { localize } from 'vs/nls';
 
-import { nb } from 'sqlops';
 import { ICellModelOptions, IModelFactory, FutureInternal } from './modelInterfaces';
 import * as notebookUtils from '../notebookUtils';
 import { CellTypes, CellType, NotebookChangeType } from 'sql/parts/notebook/models/contracts';
 import { ICellModel } from 'sql/parts/notebook/models/modelInterfaces';
 import { NotebookModel } from 'sql/parts/notebook/models/notebookModel';
-
+import { INotificationService, Severity } from 'vs/platform/notification/common/notification';
 let modelId = 0;
 
 
 export class CellModel implements ICellModel {
-	private static LanguageMapping: Map<string, string>;
-
 	private _cellType: nb.CellType;
 	private _source: string;
 	private _language: string;
@@ -30,6 +30,7 @@ export class CellModel implements ICellModel {
 	private _isEditMode: boolean;
 	private _onOutputsChanged = new Emitter<ReadonlyArray<nb.ICellOutput>>();
 	private _onCellModeChanged = new Emitter<boolean>();
+	private _onExecutionStateChanged = new Emitter<boolean>();
 	public id: string;
 	private _isTrusted: boolean;
 	private _active: boolean;
@@ -37,7 +38,6 @@ export class CellModel implements ICellModel {
 
 	constructor(private factory: IModelFactory, cellData?: nb.ICellContents, private _options?: ICellModelOptions) {
 		this.id = `${modelId++}`;
-		CellModel.CreateLanguageMappings();
 		if (cellData) {
 			// Read in contents if available
 			this.fromJSON(cellData);
@@ -134,6 +134,89 @@ export class CellModel implements ICellModel {
 		this._language = newLanguage;
 	}
 
+	public get onExecutionStateChange(): Event<boolean> {
+		return this._onExecutionStateChanged.event;
+	}
+
+	public get isRunning(): boolean {
+		return !!(this._future && this._future.inProgress);
+	}
+
+	public async runCell(notificationService?: INotificationService): Promise<boolean> {
+		try {
+			if (this.cellType !== CellTypes.Code) {
+				// TODO should change hidden state to false if we add support
+				// for this property
+				return false;
+			}
+			let kernel = await this.getOrStartKernel(notificationService);
+			if (!kernel) {
+				return false;
+			}
+			// If cell is currently running and user clicks the stop/cancel button, call kernel.interrupt()
+			// This matches the same behavior as JupyterLab
+			if (this.future && this.future.inProgress) {
+				this.future.inProgress = false;
+				await kernel.interrupt();
+			} else {
+				// TODO update source based on editor component contents
+				let content = this.source;
+				if (content) {
+					this._onExecutionStateChanged.fire(true);
+					let future = await kernel.requestExecute({
+						code: content,
+						stop_on_error: true
+					}, false);
+					this.setFuture(future as FutureInternal);
+					// For now, await future completion. Later we should just track and handle cancellation based on model notifications
+					let result: nb.IExecuteReplyMsg = <nb.IExecuteReplyMsg><any> await future.done;
+					return result && result.content.status === 'ok' ? true : false;
+				}
+			}
+		} catch (error) {
+			if (error.message === 'Canceled') {
+				// swallow the error
+			}
+			let message = notebookUtils.getErrorMessage(error);
+			this.sendNotification(notificationService, Severity.Error, message);
+			throw error;
+		} finally {
+			this._onExecutionStateChanged.fire(false);
+		}
+
+		return true;
+	}
+
+	private async getOrStartKernel(notificationService: INotificationService): Promise<nb.IKernel> {
+		let model = this.options.notebook;
+		let clientSession = model && model.clientSession;
+		if (!clientSession) {
+			this.sendNotification(notificationService, Severity.Error, localize('notebookNotReady', 'The session for this notebook is not yet ready'));
+			return undefined;
+		} else if (!clientSession.isReady || clientSession.status === 'dead') {
+
+			this.sendNotification(notificationService, Severity.Info, localize('sessionNotReady', 'The session for this notebook will start momentarily'));
+			await clientSession.kernelChangeCompleted;
+		}
+		if (!clientSession.kernel) {
+			let defaultKernel = model && model.defaultKernel && model.defaultKernel.name;
+			if (!defaultKernel) {
+				this.sendNotification(notificationService, Severity.Error, localize('noDefaultKernel', 'No kernel is available for this notebook'));
+				return undefined;
+			}
+			await clientSession.changeKernel({
+				name: defaultKernel
+			});
+		}
+		return clientSession.kernel;
+	}
+
+	private sendNotification(notificationService: INotificationService, severity: Severity, message: string): void {
+		if (notificationService) {
+			notificationService.notify({ severity: severity, message: message});
+		}
+	}
+
 	/**
 	 * Sets the future which will be used to update the output
 	 * area for this cell
@@ -181,6 +264,11 @@ export class CellModel implements ICellModel {
 		// TODO #931 we should process this. There can be a payload attached which should be added to outputs.
 		// In all other cases, it is a no-op
 		let output: nb.ICellOutput = msg.content as nb.ICellOutput;
+
+		if (!this._future.inProgress) {
+			this._future.dispose();
+			this._future = undefined;
+		}
 	}
 
 	private handleIOPub(msg: nb.IIOPubMessage): void {
@@ -226,9 +314,6 @@ export class CellModel implements ICellModel {
 			this._outputs.push(this.rewriteOutputUrls(output));
 			this.fireOutputsChanged();
 		}
-		if (!this._future.inProgress) {
-			this._future.dispose();
-		}
 	}
 
 	private rewriteOutputUrls(output: nb.ICellOutput): nb.ICellOutput {
@@ -238,9 +323,9 @@ export class CellModel implements ICellModel {
 			try {
 				let result = output as nb.IDisplayResult;
 				if (result && result.data && result.data['text/html']) {
-					let nbm = (this as CellModel).options.notebook as NotebookModel;
-					if (nbm.hadoopConnection) {
-						let host = nbm.hadoopConnection.host;
+					let model = (this as CellModel).options.notebook as NotebookModel;
+					if (model.activeConnection) {
+						let host = model.activeConnection.serverName;
 						let html = result.data['text/html'];
 						html = html.replace(/(https?:\/\/mssql-master.*\/proxy)(.*)/g, function (a, b, c) {
 							let ret = '';
@@ -321,18 +406,6 @@ export class CellModel implements ICellModel {
 	}
   }
 
-	private static CreateLanguageMappings(): void {
-		if (CellModel.LanguageMapping) {
-			return;
-		}
-		CellModel.LanguageMapping = new Map<string, string>();
-		CellModel.LanguageMapping['pyspark'] = 'python';
-		CellModel.LanguageMapping['pyspark3'] = 'python';
-		CellModel.LanguageMapping['python'] = 'python';
-		CellModel.LanguageMapping['scala'] = 'scala';
-		CellModel.LanguageMapping['sql'] = 'sql';
-	}
-
 	private get languageInfo(): nb.ILanguageInfo {
 		if (this._options && this._options.notebook && this._options.notebook.languageInfo) {
 			return this._options.notebook.languageInfo;
@@ -371,17 +444,15 @@ export class CellModel implements ICellModel {
 		// Otherwise, default to python as the language
 		let languageInfo = this.languageInfo;
 		if (languageInfo) {
-			if (languageInfo.name) {
-				// check the LanguageMapping to determine if a mapping is necessary (example 'pyspark' -> 'python')
-				if (CellModel.LanguageMapping[languageInfo.name]) {
-					this._language = CellModel.LanguageMapping[languageInfo.name];
+			if (languageInfo.codemirror_mode) {
+				let codeMirrorMode: nb.ICodeMirrorMode = <nb.ICodeMirrorMode>(languageInfo.codemirror_mode);
+				if (codeMirrorMode && codeMirrorMode.name) {
+					this._language = codeMirrorMode.name;
 				}
-				else {
-					this._language = languageInfo.name;
-				}
-			}
-			else if (languageInfo.mimetype) {
+			} else if (languageInfo.mimetype) {
 				this._language = languageInfo.mimetype;
+			} else if (languageInfo.name) {
+				this._language = languageInfo.name;
 			}
 		}
 
