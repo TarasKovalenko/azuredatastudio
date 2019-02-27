@@ -17,7 +17,7 @@ const localize = nls.loadMessageBundle();
 
 export class DeployActionPage extends DacFxConfigPage {
 
-	protected readonly wizardPage: sqlops.window.modelviewdialog.WizardPage;
+	protected readonly wizardPage: sqlops.window.WizardPage;
 	protected readonly instance: DataTierApplicationWizard;
 	protected readonly model: DacFxDataModel;
 	protected readonly view: sqlops.ModelView;
@@ -26,7 +26,7 @@ export class DeployActionPage extends DacFxConfigPage {
 	private scriptRadioButton: sqlops.RadioButtonComponent;
 	private form: sqlops.FormContainer;
 
-	public constructor(instance: DataTierApplicationWizard, wizardPage: sqlops.window.modelviewdialog.WizardPage, model: DacFxDataModel, view: sqlops.ModelView) {
+	public constructor(instance: DataTierApplicationWizard, wizardPage: sqlops.window.WizardPage, model: DacFxDataModel, view: sqlops.ModelView) {
 		super(instance, wizardPage, model, view);
 	}
 
@@ -54,6 +54,8 @@ export class DeployActionPage extends DacFxConfigPage {
 	}
 
 	async onPageEnter(): Promise<boolean> {
+		// generate script file path in case the database changed since last time the page was entered
+		this.setDefaultScriptFilePath();
 		return true;
 	}
 
@@ -120,11 +122,7 @@ export class DeployActionPage extends DacFxConfigPage {
 		this.createFileBrowserParts();
 
 		//default filepath
-		let now = new Date();
-		let datetime = now.getFullYear() + '-' + (now.getMonth() + 1) + '-' + now.getDate() + '-' + now.getHours() + '-' + now.getMinutes();
-		this.fileTextBox.value= path.join(os.homedir(), this.model.database + '_UpgradeDACScript_' + datetime + '.sql');
-		this.model.scriptFilePath = this.fileTextBox.value;
-
+		this.setDefaultScriptFilePath();
 		this.fileButton.onDidClick(async (click) => {
 			let fileUri = await vscode.window.showSaveDialog(
 				{
@@ -151,21 +149,28 @@ export class DeployActionPage extends DacFxConfigPage {
 		return {
 			title: '',
 			components: [
-			{
-				title: localize('dacfx.generatedScriptLocation','Deployment Script Location'),
-				component: this.fileTextBox,
-				layout: {
-					horizontal: true,
-					componentWidth: 400
-				},
-				actions: [this.fileButton]
-			},],
+				{
+					title: localize('dacfx.generatedScriptLocation', 'Deployment Script Location'),
+					component: this.fileTextBox,
+					layout: {
+						horizontal: true,
+						componentWidth: 400
+					},
+					actions: [this.fileButton]
+				},],
 		};
 	}
 
 	private toggleFileBrowser(enable: boolean): void {
 		this.fileTextBox.enabled = enable;
 		this.fileButton.enabled = enable;
+	}
+
+	private setDefaultScriptFilePath(): void {
+		let now = new Date();
+		let datetime = now.getFullYear() + '-' + (now.getMonth() + 1) + '-' + now.getDate() + '-' + now.getHours() + '-' + now.getMinutes();
+		this.fileTextBox.value = path.join(os.homedir(), this.model.database + '_UpgradeDACScript_' + datetime + '.sql');
+		this.model.scriptFilePath = this.fileTextBox.value;
 	}
 
 	public setupNavigationValidator() {

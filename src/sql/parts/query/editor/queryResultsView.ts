@@ -37,12 +37,11 @@ class ResultsView extends Disposable implements IPanelView {
 		this.messagePanel = this._register(this.instantiationService.createInstance(MessagePanel, { title: nls.localize('messagePanel', 'Messages'), minimumBodySize: 0, id: 'messagePanel' }));
 		this.gridPanel.render();
 		this.messagePanel.render();
-		this.panelViewlet.create(this.container).then(() => {
-			this.gridPanel.setVisible(false);
-			this.panelViewlet.addPanels([
-				{ panel: this.messagePanel, size: this.messagePanel.minimumSize, index: 1 }
-			]);
-		});
+		this.panelViewlet.create(this.container);
+		this.gridPanel.setVisible(false);
+		this.panelViewlet.addPanels([
+			{ panel: this.messagePanel, size: this.messagePanel.minimumSize, index: 1 }
+		]);
 		anyEvent(this.gridPanel.onDidChange, this.messagePanel.onDidChange)(e => {
 			let size = this.gridPanel.maximumBodySize;
 			if (size < 1 && this.gridPanel.isVisible()) {
@@ -200,18 +199,10 @@ export class QueryResultsView extends Disposable {
 	public style() {
 	}
 
-	public set input(input: QueryResultsInput) {
-		this._input = input;
-		dispose(this.runnerDisposables);
-		this.runnerDisposables = [];
-		this.resultsTab.view.state = this.input.state;
-		this.qpTab.view.state = this.input.state.queryPlanState;
-		this.topOperationsTab.view.state = this.input.state.topOperationsState;
-		this.chartTab.view.state = this.input.state.chartState;
-		let queryRunner = this.queryModelService._getQueryInfo(input.uri).queryRunner;
-		this.resultsTab.queryRunner = queryRunner;
-		this.chartTab.queryRunner = queryRunner;
-		this.runnerDisposables.push(queryRunner.onQueryStart(e => {
+	private setQueryRunner(runner: QueryRunner) {
+		this.resultsTab.queryRunner = runner;
+		this.chartTab.queryRunner = runner;
+		this.runnerDisposables.push(runner.onQueryStart(e => {
 			this.hideChart();
 			this.hidePlan();
 			this.input.state.visibleTabs = new Set();
@@ -232,15 +223,38 @@ export class QueryResultsView extends Disposable {
 				this._panelView.pushTab(this.topOperationsTab);
 			}
 		}
-		this.runnerDisposables.push(queryRunner.onQueryEnd(() => {
-			if (queryRunner.isQueryPlan) {
-				queryRunner.planXml.then(e => {
+		this.runnerDisposables.push(runner.onQueryEnd(() => {
+			if (runner.isQueryPlan) {
+				runner.planXml.then(e => {
 					this.showPlan(e);
 				});
 			}
 		}));
 		if (this.input.state.activeTab) {
 			this._panelView.showTab(this.input.state.activeTab);
+		}
+	}
+
+	public set input(input: QueryResultsInput) {
+		this._input = input;
+		dispose(this.runnerDisposables);
+		this.runnerDisposables = [];
+		this.resultsTab.view.state = this.input.state;
+		this.qpTab.view.state = this.input.state.queryPlanState;
+		this.topOperationsTab.view.state = this.input.state.topOperationsState;
+		this.chartTab.view.state = this.input.state.chartState;
+
+		let info = this.queryModelService._getQueryInfo(input.uri);
+		if (info) {
+			this.setQueryRunner(info.queryRunner);
+		} else {
+			let disposeable = this.queryModelService.onRunQueryStart(c => {
+				if (c === input.uri) {
+					let info = this.queryModelService._getQueryInfo(input.uri);
+					this.setQueryRunner(info.queryRunner);
+					disposeable.dispose();
+				}
+			});
 		}
 	}
 

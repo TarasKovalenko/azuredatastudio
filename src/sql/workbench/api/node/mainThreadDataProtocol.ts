@@ -15,7 +15,7 @@ import { ICapabilitiesService } from 'sql/platform/capabilities/common/capabilit
 import { IQueryManagementService } from 'sql/platform/query/common/queryManagement';
 import * as sqlops from 'sqlops';
 import { IMetadataService } from 'sql/platform/metadata/common/metadataService';
-import { IObjectExplorerService, NodeExpandInfoWithProviderId } from 'sql/parts/objectExplorer/common/objectExplorerService';
+import { IObjectExplorerService, NodeExpandInfoWithProviderId } from 'sql/workbench/services/objectExplorer/common/objectExplorerService';
 import { IScriptingService } from 'sql/platform/scripting/common/scriptingService';
 import { IAdminService } from 'sql/workbench/services/admin/common/adminService';
 import { IJobManagementService } from 'sql/platform/jobManagement/common/interfaces';
@@ -445,6 +445,9 @@ export class MainThreadDataProtocol implements MainThreadDataProtocolShape {
 			},
 			generateDeployScript(packageFilePath: string, databaseName: string, scriptFilePath: string, ownerUri: string, taskExecutionMode: sqlops.TaskExecutionMode): Thenable<sqlops.DacFxResult> {
 				return self._proxy.$generateDeployScript(handle, packageFilePath, databaseName, scriptFilePath, ownerUri, taskExecutionMode);
+			},
+			generateDeployPlan(packageFilePath: string, databaseName: string, ownerUri: string, taskExecutionMode: sqlops.TaskExecutionMode): Thenable<sqlops.GenerateDeployPlanResult> {
+				return self._proxy.$generateDeployPlan(handle, packageFilePath, databaseName, ownerUri, taskExecutionMode);
 			}
 		});
 

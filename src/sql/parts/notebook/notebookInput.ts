@@ -10,7 +10,7 @@ import { TPromise } from 'vs/base/common/winjs.base';
 import { IEditorModel } from 'vs/platform/editor/common/editor';
 import { EditorInput, EditorModel, ConfirmResult } from 'vs/workbench/common/editor';
 import { Emitter, Event } from 'vs/base/common/event';
-import URI from 'vs/base/common/uri';
+import { URI } from 'vs/base/common/uri';
 import * as resources from 'vs/base/common/resources';
 import * as sqlops from 'sqlops';
 
@@ -28,7 +28,14 @@ export class NotebookInputModel extends EditorModel {
 	private _providerId: string;
 	private _standardKernels: IStandardKernelWithProvider[];
 	private _defaultKernel: sqlops.nb.IKernelSpec;
-	constructor(public readonly notebookUri: URI, private readonly handle: number, private _isTrusted: boolean = false, private saveHandler?: ModeViewSaveHandler, provider?: string, private _providers?: string[]) {
+	constructor(public readonly notebookUri: URI,
+		private readonly handle: number,
+		private _isTrusted: boolean = false,
+		private saveHandler?: ModeViewSaveHandler,
+		provider?: string,
+		private _providers?: string[],
+		private _connectionProfileId?: string) {
+
 		super();
 		this.dirty = false;
 		this._providerId = provider;
@@ -49,6 +56,10 @@ export class NotebookInputModel extends EditorModel {
 
 	public set providers(value: string[]) {
 		this._providers = value;
+	}
+
+	public get connectionProfileId(): string {
+		return this._connectionProfileId;
 	}
 
 	public get standardKernels(): IStandardKernelWithProvider[] {
@@ -129,6 +140,10 @@ export class NotebookInput extends EditorInput {
 
 	public get providers(): string[] {
 		return this._model.providers;
+	}
+
+	public get connectionProfileId(): string {
+		return this._model.connectionProfileId;
 	}
 
 	public get standardKernels(): IStandardKernelWithProvider[] {

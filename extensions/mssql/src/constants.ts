@@ -20,7 +20,7 @@ export const userPropName = 'user';
 export const knoxPortPropName = 'knoxport';
 export const passwordPropName = 'password';
 export const groupIdPropName = 'groupId';
-export const defaultKnoxPort = '30443';
+export const defaultKnoxPort = 30443;
 export const groupIdName = 'groupId';
 export const sqlProviderName = 'MSSQL';
 export const dataService = 'Data Services';
@@ -58,3 +58,17 @@ export enum MssqlClusterItems {
 export enum MssqlClusterItemsSubType {
 	Spark = 'mssqlCluster:spark'
 }
+
+// SPARK JOB SUBMISSION //////////////////////////////////////////////////////////
+export const mssqlClusterNewNotebookTask = 'mssqlCluster.task.newNotebook';
+export const mssqlClusterOpenNotebookTask = 'mssqlCluster.task.openNotebook';
+export const mssqlClusterLivySubmitSparkJobCommand = 'mssqlCluster.livy.cmd.submitSparkJob';
+export const mssqlClusterLivySubmitSparkJobFromFileCommand = 'mssqlCluster.livy.cmd.submitFileToSparkJob';
+export const mssqlClusterLivySubmitSparkJobTask = 'mssqlCluster.livy.task.submitSparkJob';
+export const mssqlClusterLivyOpenSparkHistory = 'mssqlCluster.livy.task.openSparkHistory';
+export const mssqlClusterLivyOpenYarnHistory = 'mssqlCluster.livy.task.openYarnHistory';
+export const mssqlClusterLivySubmitPath = '/gateway/default/livy/v1/batches';
+export const mssqlClusterLivyTimeInMSForCheckYarnApp = 1000;
+export const mssqlClusterLivyRetryTimesForCheckYarnApp = 20;
+export const mssqlClusterSparkJobFileSelectorButtonWidth = '30px';
+export const mssqlClusterSparkJobFileSelectorButtonHeight = '30px';

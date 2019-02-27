@@ -11,7 +11,7 @@
 import { nb } from 'sqlops';
 import { Event } from 'vs/base/common/event';
 import { IDisposable } from 'vs/base/common/lifecycle';
-import URI from 'vs/base/common/uri';
+import { URI } from 'vs/base/common/uri';
 import { INotificationService } from 'vs/platform/notification/common/notification';
 
 import { CellType, NotebookChangeType } from 'sql/parts/notebook/models/contracts';
@@ -135,7 +135,7 @@ export interface IClientSession extends IDisposable {
 	 * This will optionally start a session if the kernel preferences
 	 * indicate this is desired
 	 */
-	initialize(connection?: IConnectionProfile): Promise<void>;
+	initialize(): Promise<void>;
 
 	/**
 	 * Change the current kernel associated with the document.
@@ -267,9 +267,13 @@ export interface INotebookModel {
 	 */
 	readonly clientSession: IClientSession;
 	/**
-	 * LanguageInfo saved in the query book
+	 * LanguageInfo saved in the notebook
 	 */
 	readonly languageInfo: nb.ILanguageInfo;
+	/**
+	 * Current default language for the notebook
+	 */
+	readonly language: string;
 
 	/**
 	 * All notebook managers applicable for a given notebook
@@ -341,7 +345,7 @@ export interface INotebookModel {
 	/**
 	 * Change the current context (if applicable)
 	 */
-	changeContext(host: string, connection?: IConnectionProfile): Promise<void>;
+	changeContext(host: string, connection?: IConnectionProfile, hideErrorMessage?: boolean): Promise<void>;
 
 	/**
 	 * Find a cell's index given its model
@@ -378,6 +382,9 @@ export interface INotebookModel {
 	pushEditOperations(edits: ISingleNotebookEditOperation[]): void;
 
 	getApplicableConnectionProviderIds(kernelName: string): string[];
+
+	/** Event fired once we get call back from ConfigureConnection method in sqlops extension */
+	readonly onValidConnectionSelected: Event<boolean>;
 }
 
 export interface NotebookContentChange {
@@ -408,21 +415,31 @@ export interface ICellModelOptions {
 	isTrusted: boolean;
 }
 
+export enum CellExecutionState {
+	Hidden = 0,
+	Stopped = 1,
+	Running = 2,
+	Error = 3
+}
+
 export interface ICellModel {
 	cellUri: URI;
 	id: string;
-	language: string;
+	readonly language: string;
 	source: string;
 	cellType: CellType;
 	trustedMode: boolean;
 	active: boolean;
+	hover: boolean;
+	executionCount: number | undefined;
 	readonly future: FutureInternal;
 	readonly outputs: ReadonlyArray<nb.ICellOutput>;
 	readonly onOutputsChanged: Event<ReadonlyArray<nb.ICellOutput>>;
-	readonly onExecutionStateChange: Event<boolean>;
+	readonly onExecutionStateChange: Event<CellExecutionState>;
 	setFuture(future: FutureInternal): void;
-	readonly isRunning: boolean;
+	readonly executionState: CellExecutionState;
 	runCell(notificationService?: INotificationService): Promise<boolean>;
+	setOverrideLanguage(language: string);
 	equals(cellModel: ICellModel): boolean;
 	toJSON(): nb.ICellContents;
 }
@@ -453,12 +470,29 @@ export interface INotebookModelOptions {
 	providerId: string;
 	standardKernels: IStandardKernelWithProvider[];
 	defaultKernel: nb.IKernelSpec;
+	cellMagicMapper: ICellMagicMapper;
 
 	layoutChanged: Event<void>;
 
 	notificationService: INotificationService;
 	connectionService: IConnectionManagementService;
 	capabilitiesService: ICapabilitiesService;
+}
+
+export interface ILanguageMagic {
+	magic: string;
+	language: string;
+	kernels?: string[];
+	executionTarget?: string;
+}
+
+export interface ICellMagicMapper {
+	/**
+	 * Tries to find a language mapping for an identified cell magic
+	 * @param magic a string defining magic. For example for %%sql the magic text is sql
+	 * @param kernelId the name of the current kernel to use when looking up magics
+	 */
+	toLanguageMagic(magic: string, kernelId: string): ILanguageMagic | undefined;
 }
 
 export namespace notebookConstants {

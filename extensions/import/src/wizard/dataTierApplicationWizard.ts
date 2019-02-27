@@ -8,6 +8,7 @@ import * as nls from 'vscode-nls';
 import * as sqlops from 'sqlops';
 import { SelectOperationPage } from './pages/selectOperationpage';
 import { DeployConfigPage } from './pages/deployConfigPage';
+import { DeployPlanPage } from './pages/deployPlanPage';
 import { DeployActionPage } from './pages/deployActionPage';
 import { DacFxSummaryPage } from './pages/dacFxSummaryPage';
 import { ExportConfigPage } from './pages/exportConfigPage';
@@ -19,10 +20,10 @@ import { BasePage } from './api/basePage';
 const localize = nls.loadMessageBundle();
 
 class Page {
-	wizardPage: sqlops.window.modelviewdialog.WizardPage;
+	wizardPage: sqlops.window.WizardPage;
 	dacFxPage: BasePage;
 
-	constructor(wizardPage: sqlops.window.modelviewdialog.WizardPage) {
+	constructor(wizardPage: sqlops.window.WizardPage) {
 		this.wizardPage = wizardPage;
 	}
 }
@@ -38,7 +39,14 @@ export enum Operation {
 export enum DeployOperationPath {
 	selectOperation,
 	deployOptions,
+	deployPlan,
 	deployAction,
+	summary
+}
+
+export enum DeployNewOperationPath {
+	selectOperation,
+	deployOptions,
 	summary
 }
 
@@ -61,7 +69,7 @@ export enum ExportOperationPath {
 }
 
 export class DataTierApplicationWizard {
-	public wizard: sqlops.window.modelviewdialog.Wizard;
+	public wizard: sqlops.window.Wizard;
 	private connection: sqlops.connection.Connection;
 	private model: DacFxDataModel;
 	public pages: Map<string, Page> = new Map<string, Page>();
@@ -84,17 +92,19 @@ export class DataTierApplicationWizard {
 			this.connection = await sqlops.connection.openConnectionDialog();
 		}
 
-		this.wizard = sqlops.window.modelviewdialog.createWizard('Data-tier Application Wizard');
-		let selectOperationWizardPage = sqlops.window.modelviewdialog.createWizardPage(localize('dacFx.selectOperationPageName', 'Select an Operation'));
-		let deployConfigWizardPage = sqlops.window.modelviewdialog.createWizardPage(localize('dacFx.deployConfigPageName', 'Select Deploy Dacpac Settings'));
-		let deployActionWizardPage = sqlops.window.modelviewdialog.createWizardPage(localize('dacFx.deployActionPageName', 'Select Action'));
-		let summaryWizardPage = sqlops.window.modelviewdialog.createWizardPage(localize('dacFx.summaryPageName', 'Summary'));
-		let extractConfigWizardPage = sqlops.window.modelviewdialog.createWizardPage(localize('dacFx.extractConfigPageName', 'Select Extract Dacpac Settings'));
-		let importConfigWizardPage = sqlops.window.modelviewdialog.createWizardPage(localize('dacFx.importConfigPageName', 'Select Import Bacpac Settings'));
-		let exportConfigWizardPage = sqlops.window.modelviewdialog.createWizardPage(localize('dacFx.exportConfigPageName', 'Select Export Bacpac Settings'));
+		this.wizard = sqlops.window.createWizard('Data-tier Application Wizard');
+		let selectOperationWizardPage = sqlops.window.createWizardPage(localize('dacFx.selectOperationPageName', 'Select an Operation'));
+		let deployConfigWizardPage = sqlops.window.createWizardPage(localize('dacFx.deployConfigPageName', 'Select Deploy Dacpac Settings'));
+		let deployPlanWizardPage = sqlops.window.createWizardPage(localize('dacFx.deployPlanPage', 'Review the deploy plan'));
+		let deployActionWizardPage = sqlops.window.createWizardPage(localize('dacFx.deployActionPageName', 'Select Action'));
+		let summaryWizardPage = sqlops.window.createWizardPage(localize('dacFx.summaryPageName', 'Summary'));
+		let extractConfigWizardPage = sqlops.window.createWizardPage(localize('dacFx.extractConfigPageName', 'Select Extract Dacpac Settings'));
+		let importConfigWizardPage = sqlops.window.createWizardPage(localize('dacFx.importConfigPageName', 'Select Import Bacpac Settings'));
+		let exportConfigWizardPage = sqlops.window.createWizardPage(localize('dacFx.exportConfigPageName', 'Select Export Bacpac Settings'));
 
 		this.pages.set('selectOperation', new Page(selectOperationWizardPage));
 		this.pages.set('deployConfig', new Page(deployConfigWizardPage));
+		this.pages.set('deployPlan', new Page(deployPlanWizardPage));
 		this.pages.set('deployAction', new Page(deployActionWizardPage));
 		this.pages.set('extractConfig', new Page(extractConfigWizardPage));
 		this.pages.set('importConfig', new Page(importConfigWizardPage));
@@ -114,6 +124,12 @@ export class DataTierApplicationWizard {
 			let deployConfigDacFxPage = new DeployConfigPage(this, deployConfigWizardPage, this.model, view);
 			this.pages.get('deployConfig').dacFxPage = deployConfigDacFxPage;
 			await deployConfigDacFxPage.start();
+		});
+
+		deployPlanWizardPage.registerContent(async (view) => {
+			let deployPlanDacFxPage = new DeployPlanPage(this, deployPlanWizardPage, this.model, view);
+			this.pages.get('deployPlan').dacFxPage = deployPlanDacFxPage;
+			await deployPlanDacFxPage.start();
 		});
 
 		deployActionWizardPage.registerContent(async (view) => {
@@ -166,7 +182,7 @@ export class DataTierApplicationWizard {
 			}
 		});
 
-		this.wizard.pages = [selectOperationWizardPage, deployConfigWizardPage, deployActionWizardPage, summaryWizardPage];
+		this.wizard.pages = [selectOperationWizardPage, deployConfigWizardPage, deployPlanWizardPage, deployActionWizardPage, summaryWizardPage];
 		this.wizard.generateScriptButton.hidden = true;
 		this.wizard.generateScriptButton.onClick(async () => await this.generateDeployScript());
 		this.wizard.doneButton.onClick(async () => await this.executeOperation());
@@ -174,7 +190,7 @@ export class DataTierApplicationWizard {
 		this.wizard.open();
 	}
 
-	public registerNavigationValidator(validator: (pageChangeInfo: sqlops.window.modelviewdialog.WizardPageChangeInfo) => boolean) {
+	public registerNavigationValidator(validator: (pageChangeInfo: sqlops.window.WizardPageChangeInfo) => boolean) {
 		this.wizard.registerNavigationValidator(validator);
 	}
 
@@ -290,7 +306,7 @@ export class DataTierApplicationWizard {
 		let ownerUri = await sqlops.connection.getUriForConnection(this.model.server.connectionId);
 		this.wizard.message = {
 			text: localize('dacfx.scriptGeneratingMessage', 'You can view the status of script generation in the Task History once the wizard is closed'),
-			level: sqlops.window.modelviewdialog.MessageLevel.Information,
+			level: sqlops.window.MessageLevel.Information,
 			description: ''
 		};
 
@@ -323,10 +339,12 @@ export class DataTierApplicationWizard {
 					break;
 				}
 			}
-		} else if ((this.selectedOperation === Operation.deploy || this.selectedOperation === Operation.generateDeployScript) && idx === DeployOperationPath.deployAction) {
-			page = this.pages.get('deployAction');
 		} else if (this.isSummaryPage(idx)) {
 			page = this.pages.get('summary');
+		} else if ((this.selectedOperation === Operation.deploy || this.selectedOperation === Operation.generateDeployScript) && idx === DeployOperationPath.deployPlan) {
+			page = this.pages.get('deployPlan');
+		} else if ((this.selectedOperation === Operation.deploy || this.selectedOperation === Operation.generateDeployScript) && idx === DeployOperationPath.deployAction) {
+			page = this.pages.get('deployAction');
 		}
 
 		return page;
@@ -336,7 +354,22 @@ export class DataTierApplicationWizard {
 		return this.selectedOperation === Operation.import && idx === ImportOperationPath.summary
 			|| this.selectedOperation === Operation.export && idx === ExportOperationPath.summary
 			|| this.selectedOperation === Operation.extract && idx === ExtractOperationPath.summary
+			|| this.selectedOperation === Operation.deploy && !this.model.upgradeExisting && idx === DeployNewOperationPath.summary
 			|| (this.selectedOperation === Operation.deploy || this.selectedOperation === Operation.generateDeployScript) && idx === DeployOperationPath.summary;
+	}
+
+	public async generateDeployPlan(): Promise<string> {
+		let service = await DataTierApplicationWizard.getService(this.model.server.providerName);
+		let ownerUri = await sqlops.connection.getUriForConnection(this.model.server.connectionId);
+
+		let result = await service.generateDeployPlan(this.model.filePath, this.model.database, ownerUri, sqlops.TaskExecutionMode.execute);
+
+		if (!result || !result.success) {
+			vscode.window.showErrorMessage(
+				localize('alertData.deployPlanErrorMessage', "Generating deploy plan failed '{0}'", result.errorMessage ? result.errorMessage : 'Unknown'));
+		}
+
+		return result.report;
 	}
 
 	private static async getService(providerName: string): Promise<sqlops.DacFxServicesProvider> {

@@ -16,7 +16,7 @@ import { IComponent, IComponentDescriptor, IModelStore, ComponentEventType } fro
 
 import { Table } from 'sql/base/browser/ui/table/table';
 import { TableDataView } from 'sql/base/browser/ui/table/tableDataView';
-import { attachTableStyler } from 'sql/common/theme/styler';
+import { attachTableStyler } from 'sql/platform/theme/common/styler';
 import { IWorkbenchThemeService } from 'vs/workbench/services/themes/common/workbenchThemeService';
 import { getContentHeight, getContentWidth, Dimension } from 'vs/base/browser/dom';
 import { RowSelectionModel } from 'sql/base/browser/ui/table/plugins/rowSelectionModel.plugin';
@@ -57,7 +57,8 @@ export default class TableComponent extends ComponentBase implements IComponent,
 						id: col.value,
 						field: col.value,
 						width: col.width,
-						cssClass: col.cssClass
+						cssClass: col.cssClass,
+						toolTip: col.toolTip
 					};
 				} else {
 					return <Slick.Column<any>>{

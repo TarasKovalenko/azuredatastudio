@@ -10,7 +10,7 @@
 
 import { nb } from 'sqlops';
 import * as nls from 'vs/nls';
-import URI from 'vs/base/common/uri';
+import { URI } from 'vs/base/common/uri';
 import { Event, Emitter } from 'vs/base/common/event';
 
 import { IClientSession, IKernelPreference, IClientSessionOptions } from './modelInterfaces';
@@ -304,10 +304,6 @@ export class ClientSession implements IClientSession {
 		// Always try to shut down session
 		if (this._session && this._session.id) {
 			await this.notebookManager.sessionManager.shutdown(this._session.id);
-		}
-		let serverManager = this.notebookManager.serverManager;
-		if (serverManager) {
-			await serverManager.stopServer();
 		}
 	}
 

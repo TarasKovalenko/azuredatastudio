@@ -14,7 +14,7 @@ const localize = nls.loadMessageBundle();
 
 export class DacFxSummaryPage extends BasePage {
 
-	protected readonly wizardPage: sqlops.window.modelviewdialog.WizardPage;
+	protected readonly wizardPage: sqlops.window.WizardPage;
 	protected readonly instance: DataTierApplicationWizard;
 	protected readonly model: DacFxDataModel;
 	protected readonly view: sqlops.ModelView;
@@ -23,7 +23,7 @@ export class DacFxSummaryPage extends BasePage {
 	private table: sqlops.TableComponent;
 	private loader: sqlops.LoadingComponent;
 
-	public constructor(instance: DataTierApplicationWizard, wizardPage: sqlops.window.modelviewdialog.WizardPage, model: DacFxDataModel, view: sqlops.ModelView) {
+	public constructor(instance: DataTierApplicationWizard, wizardPage: sqlops.window.WizardPage, model: DacFxDataModel, view: sqlops.ModelView) {
 		super();
 		this.instance = instance;
 		this.wizardPage = wizardPage;
@@ -131,7 +131,15 @@ export class DacFxSummaryPage extends BasePage {
 
 		this.table.updateProperties({
 			data: data,
-			columns: ['Setting', 'Value'],
+			columns: [
+				{
+					value: localize('dacfx.settingColumn', 'Setting'),
+					cssClass: 'align-with-header'
+				},
+				{
+					value: localize('dacfx.valueColumn', 'Value'),
+					cssClass: 'align-with-header'
+				}],
 			width: 700,
 			height: 200
 		});

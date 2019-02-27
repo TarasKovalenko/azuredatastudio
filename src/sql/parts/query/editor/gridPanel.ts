@@ -6,7 +6,7 @@
 
 import * as pretty from 'pretty-data';
 
-import { attachTableStyler } from 'sql/common/theme/styler';
+import { attachTableStyler } from 'sql/platform/theme/common/styler';
 import QueryRunner from 'sql/platform/query/common/queryRunner';
 import { VirtualizedCollection, AsyncDataProvider } from 'sql/base/browser/ui/table/asyncDataView';
 import { Table } from 'sql/base/browser/ui/table/table';
@@ -23,6 +23,7 @@ import { CopyKeybind } from 'sql/base/browser/ui/table/plugins/copyKeybind.plugi
 import { AdditionalKeyBindings } from 'sql/base/browser/ui/table/plugins/additionalKeyBindings.plugin';
 import { ITableStyles, ITableMouseEvent } from 'sql/base/browser/ui/table/interfaces';
 import { warn } from 'sql/base/common/log';
+import { $ } from 'sql/base/browser/builder';
 
 import * as sqlops from 'sqlops';
 
@@ -36,7 +37,6 @@ import { isUndefinedOrNull } from 'vs/base/common/types';
 import { range } from 'vs/base/common/arrays';
 import { Orientation } from 'vs/base/browser/ui/splitview/splitview';
 import { Disposable, IDisposable, dispose } from 'vs/base/common/lifecycle';
-import { $ } from 'vs/base/browser/builder';
 import { generateUuid } from 'vs/base/common/uuid';
 import { TPromise } from 'vs/base/common/winjs.base';
 import { Separator, ActionBar, ActionsOrientation } from 'vs/base/browser/ui/actionbar/actionbar';
@@ -55,7 +55,7 @@ const BOTTOM_PADDING = 15;
 const ACTIONBAR_WIDTH = 36;
 
 // minimum height needed to show the full actionbar
-const ACTIONBAR_HEIGHT = 100;
+const ACTIONBAR_HEIGHT = 120;
 
 // this handles min size if rows is greater than the min grid visible rows
 const MIN_GRID_HEIGHT = (MIN_GRID_HEIGHT_ROWS * ROW_HEIGHT) + HEADER_HEIGHT + ESTIMATED_SCROLL_BAR_HEIGHT;
@@ -765,7 +765,7 @@ class GridTable<T> extends Disposable implements IView {
 					}
 				}
 
-				return TPromise.as(actions);
+				return actions;
 			},
 			getActionsContext: () => {
 				return this.generateContext(cell);
