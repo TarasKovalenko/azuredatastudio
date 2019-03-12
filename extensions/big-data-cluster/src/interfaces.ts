@@ -52,6 +52,8 @@ export interface ContainerRegistryInfo {
 export interface TargetClusterTypeInfo {
 	type: TargetClusterType;
 	name: string;
+	fullName: string;
+	description: string;
 	iconPath: {
 		dark: string,
 		light: string
@@ -61,11 +63,21 @@ export interface TargetClusterTypeInfo {
 export interface ToolInfo {
 	name: string;
 	description: string;
+	version: string;
 	status: ToolInstallationStatus;
 }
 
 export enum ToolInstallationStatus {
 	Installed,
 	NotInstalled,
-	Installing
+	Installing,
+	FailedToInstall
+}
+
+export enum ClusterType {
+	Unknown = 0,
+	AKS,
+	Minikube,
+	Kubernetes,
+	Other
 }

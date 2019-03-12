@@ -3,9 +3,12 @@
  *  Licensed under the Source EULA. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import * as vscode from "vscode";
-import { Kubectl } from "./kubectl";
-import { failed } from "../interfaces";
+import * as vscode from 'vscode';
+import * as nls from 'vscode-nls';
+const localize = nls.loadMessageBundle();
+
+import { Kubectl } from './kubectl';
+import { failed, ClusterType } from '../interfaces';
 
 export interface KubectlContext {
     readonly clusterName: string;
@@ -47,7 +50,7 @@ export interface ClusterConfig {
 
 
 async function getKubeconfig(kubectl: Kubectl): Promise<Kubeconfig | null> {
-    const shellResult = await kubectl.asJson<any>("config view -o json");
+    const shellResult = await kubectl.asJson<any>('config view -o json');
     if (failed(shellResult)) {
         vscode.window.showErrorMessage(shellResult.error[0]);
         return null;
@@ -60,11 +63,11 @@ export async function getCurrentClusterConfig(kubectl: Kubectl): Promise<Cluster
     if (!kubeConfig || !kubeConfig.clusters || !kubeConfig.contexts) {
         return undefined;
     }
-    const contextConfig = kubeConfig.contexts.find((context) => context.name === kubeConfig["current-context"])!;
+    const contextConfig = kubeConfig.contexts.find((context) => context.name === kubeConfig['current-context'])!;
     const clusterConfig = kubeConfig.clusters.find((cluster) => cluster.name === contextConfig.context.cluster)!;
     return {
         server: clusterConfig.cluster.server,
-        certificateAuthority: clusterConfig.cluster["certificate-authority"]
+        certificateAuthority: clusterConfig.cluster['certificate-authority']
     };
 }
 
@@ -73,7 +76,7 @@ export async function getContexts(kubectl: Kubectl): Promise<KubectlContext[]> {
     if (!kubectlConfig) {
         return [];
     }
-    const currentContext = kubectlConfig["current-context"];
+    const currentContext = kubectlConfig['current-context'];
     const contexts = kubectlConfig.contexts || [];
     return contexts.map((c) => {
         return {
@@ -83,4 +86,51 @@ export async function getContexts(kubectl: Kubectl): Promise<KubectlContext[]> {
             active: c.name === currentContext
         };
     });
+}
+
+export async function setContext(kubectl: Kubectl, targetContext: string): Promise<void> {
+    const shellResult = await kubectl.invokeAsync(`config use-context ${targetContext}`);
+    if (!shellResult || shellResult.code !== 0) {
+        // TODO: Update error handling for now.
+        let errMsg = shellResult ? shellResult.stderr : localize('runKubectlFailed', 'Unable to run kubectl');
+        vscode.window.showErrorMessage(localize('setClusterFailed', 'Failed to set \'{0}\' as current cluster: {1}', targetContext, errMsg));
+    }
+}
+
+export async function inferCurrentClusterType(kubectl: Kubectl): Promise<ClusterType> {
+    let latestContextName = '';
+
+    const ctxsr = await kubectl.invokeAsync('config current-context');
+    if (ctxsr && ctxsr.code === 0) {
+        latestContextName = ctxsr.stdout.trim();
+    } else {
+        return ClusterType.Other;
+    }
+
+    const cisr = await kubectl.invokeAsync('cluster-info');
+    if (!cisr || cisr.code !== 0) {
+        return ClusterType.Unknown;
+    }
+    const masterInfos = cisr.stdout.split('\n')
+                                   .filter((s) => s.indexOf('master is running at') >= 0);
+
+    if (masterInfos.length === 0) {
+        return ClusterType.Other;
+    }
+
+    const masterInfo = masterInfos[0];
+    if (masterInfo.indexOf('azmk8s.io') >= 0 || masterInfo.indexOf('azure.com') >= 0) {
+        return ClusterType.AKS;
+    }
+
+    if (latestContextName) {
+        const gcsr = await kubectl.invokeAsync(`config get-contexts ${latestContextName}`);
+        if (gcsr && gcsr.code === 0) {
+            if (gcsr.stdout.indexOf('minikube') >= 0) {
+                return ClusterType.Minikube;
+            }
+        }
+    }
+
+    return ClusterType.Other;
 }

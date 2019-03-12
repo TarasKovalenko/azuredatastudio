@@ -25,7 +25,7 @@ import { ITableStyles, ITableMouseEvent } from 'sql/base/browser/ui/table/interf
 import { warn } from 'sql/base/common/log';
 import { $ } from 'sql/base/browser/builder';
 
-import * as sqlops from 'sqlops';
+import * as azdata from 'azdata';
 
 import { IKeybindingService } from 'vs/platform/keybinding/common/keybinding';
 import { IContextMenuService } from 'vs/platform/contextview/browser/contextView';
@@ -145,6 +145,7 @@ export class GridPanel extends ViewletPanel {
 		@IInstantiationService private instantiationService: IInstantiationService
 	) {
 		super(options, keybindingService, contextMenuService, configurationService);
+		this.maximumBodySize = 0;
 		this.splitView = new ScrollableSplitView(this.container, { enableResizing: false, verticalScrollbarVisibility: ScrollbarVisibility.Visible });
 		this.splitView.onScroll(e => {
 			if (this.state && this.splitView.length !== 0) {
@@ -187,7 +188,7 @@ export class GridPanel extends ViewletPanel {
 			}
 			this.reset();
 		}));
-		this.addResultSet(this.runner.batchSets.reduce<sqlops.ResultSetSummary[]>((p, e) => {
+		this.addResultSet(this.runner.batchSets.reduce<azdata.ResultSetSummary[]>((p, e) => {
 			if (this.configurationService.getValue<boolean>('sql.results.streaming')) {
 				p = p.concat(e.resultSetSummaries);
 			} else {
@@ -195,17 +196,14 @@ export class GridPanel extends ViewletPanel {
 			}
 			return p;
 		}, []));
-		this.maximumBodySize = this.tables.reduce((p, c) => {
-			return p + c.maximumSize;
-		}, 0);
 
 		if (this.state && this.state.scrollPosition) {
 			this.splitView.setScrollPosition(this.state.scrollPosition);
 		}
 	}
 
-	private onResultSet(resultSet: sqlops.ResultSetSummary | sqlops.ResultSetSummary[]) {
-		let resultsToAdd: sqlops.ResultSetSummary[];
+	private onResultSet(resultSet: azdata.ResultSetSummary | azdata.ResultSetSummary[]) {
+		let resultsToAdd: azdata.ResultSetSummary[];
 		if (!Array.isArray(resultSet)) {
 			resultsToAdd = [resultSet];
 		} else {
@@ -215,10 +213,6 @@ export class GridPanel extends ViewletPanel {
 			this.tables.map(t => {
 				t.state.canBeMaximized = this.tables.length > 1;
 			});
-
-			this.maximumBodySize = this.tables.reduce((p, c) => {
-				return p + c.maximumSize;
-			}, 0);
 
 			if (this.state && this.state.scrollPosition) {
 				this.splitView.setScrollPosition(this.state.scrollPosition);
@@ -237,8 +231,8 @@ export class GridPanel extends ViewletPanel {
 		}
 	}
 
-	private updateResultSet(resultSet: sqlops.ResultSetSummary | sqlops.ResultSetSummary[]) {
-		let resultsToUpdate: sqlops.ResultSetSummary[];
+	private updateResultSet(resultSet: azdata.ResultSetSummary | azdata.ResultSetSummary[]) {
+		let resultsToUpdate: azdata.ResultSetSummary[];
 		if (!Array.isArray(resultSet)) {
 			resultsToUpdate = [resultSet];
 		} else {
@@ -246,9 +240,6 @@ export class GridPanel extends ViewletPanel {
 		}
 
 		const sizeChanges = () => {
-			this.maximumBodySize = this.tables.reduce((p, c) => {
-				return p + c.maximumSize;
-			}, 0);
 
 			if (this.state && this.state.scrollPosition) {
 				this.splitView.setScrollPosition(this.state.scrollPosition);
@@ -274,7 +265,10 @@ export class GridPanel extends ViewletPanel {
 		}
 	}
 
-	private addResultSet(resultSet: sqlops.ResultSetSummary[]) {
+	private addResultSet(resultSet: azdata.ResultSetSummary[]) {
+		if (resultSet.length > 0) {
+			this.maximumBodySize = Number.POSITIVE_INFINITY;
+		}
 		let tables: GridTable<any>[] = [];
 
 		for (let set of resultSet) {
@@ -318,15 +312,12 @@ export class GridPanel extends ViewletPanel {
 		for (let i = this.splitView.length - 1; i >= 0; i--) {
 			this.splitView.removeView(i);
 		}
+		this.maximumBodySize = 0;
 		dispose(this.tables);
 		dispose(this.tableDisposable);
 		this.tableDisposable = [];
 		this.tables = [];
 		this.maximizedGrid = undefined;
-
-		this.maximumBodySize = this.tables.reduce((p, c) => {
-			return p + c.maximumSize;
-		}, 0);
 	}
 
 	private maximizeTable(tableid: string): void {
@@ -406,7 +397,7 @@ class GridTable<T> extends Disposable implements IView {
 	private scrolled = false;
 	private visible = false;
 
-	public get resultSet(): sqlops.ResultSetSummary {
+	public get resultSet(): azdata.ResultSetSummary {
 		return this._resultSet;
 	}
 
@@ -417,7 +408,7 @@ class GridTable<T> extends Disposable implements IView {
 
 	constructor(
 		private runner: QueryRunner,
-		private _resultSet: sqlops.ResultSetSummary,
+		private _resultSet: azdata.ResultSetSummary,
 		state: GridTableState,
 		@IContextMenuService private contextMenuService: IContextMenuService,
 		@IInstantiationService private instantiationService: IInstantiationService,
@@ -647,7 +638,7 @@ class GridTable<T> extends Disposable implements IView {
 		}
 	}
 
-	public updateResult(resultSet: sqlops.ResultSetSummary) {
+	public updateResult(resultSet: azdata.ResultSetSummary) {
 		this._resultSet = resultSet;
 		if (this.table && this.visible) {
 			this.dataProvider.length = resultSet.rowCount;

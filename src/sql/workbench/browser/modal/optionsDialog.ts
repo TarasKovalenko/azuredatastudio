@@ -14,7 +14,7 @@ import { attachButtonStyler, attachModalDialogStyler, attachPanelStyler } from '
 import { ServiceOptionType } from 'sql/workbench/api/common/sqlExtHostTypes';
 import { ScrollableSplitView } from 'sql/base/browser/ui/scrollableSplitview/scrollableSplitview';
 
-import * as sqlops from 'sqlops';
+import * as azdata from 'azdata';
 
 import { IPartService } from 'vs/workbench/services/part/common/partService';
 import { Event, Emitter } from 'vs/base/common/event';
@@ -87,7 +87,7 @@ export class OptionsDialog extends Modal {
 	constructor(
 		title: string,
 		name: string,
-		private options: IOptionsDialogOptions,
+		options: IOptionsDialogOptions,
 		@IPartService partService: IPartService,
 		@IWorkbenchThemeService private _workbenchThemeService: IWorkbenchThemeService,
 		@IContextViewService private _contextViewService: IContextViewService,
@@ -152,9 +152,9 @@ export class OptionsDialog extends Modal {
 		this._optionDescription.text(option.description);
 	}
 
-	private fillInOptions(container: Builder, options: sqlops.ServiceOption[]): void {
+	private fillInOptions(container: Builder, options: azdata.ServiceOption[]): void {
 		for (let i = 0; i < options.length; i++) {
-			let option: sqlops.ServiceOption = options[i];
+			let option: azdata.ServiceOption = options[i];
 			let rowContainer = DialogHelper.appendRow(container, option.displayName, 'optionsDialog-label', 'optionsDialog-input');
 			OptionsDialogHelper.createOptionElement(option, rowContainer, this._optionValues, this._optionElements, this._contextViewService, (name) => this.onOptionLinkClicked(name));
 		}
@@ -176,6 +176,10 @@ export class OptionsDialog extends Modal {
 					this._register(styler.attachInputBoxStyler(<InputBox>widget, this._themeService));
 			}
 		}
+	}
+
+	private get options(): IOptionsDialogOptions {
+		return this._modalOptions as IOptionsDialogOptions;
 	}
 
 	public get optionValues(): { [name: string]: any } {
@@ -219,7 +223,7 @@ export class OptionsDialog extends Modal {
 		this._onCloseEvent.fire();
 	}
 
-	public open(options: sqlops.ServiceOption[], optionValues: { [name: string]: any }) {
+	public open(options: azdata.ServiceOption[], optionValues: { [name: string]: any }) {
 		this._optionValues = optionValues;
 		let firstOption: string;
 		let containerGroup: Builder;
@@ -230,7 +234,7 @@ export class OptionsDialog extends Modal {
 		this.splitview = new ScrollableSplitView(containerGroup.getHTMLElement(), { enableResizing: false, scrollDebounce: 0 });
 		let categoryMap = OptionsDialogHelper.groupOptionsByCategory(options);
 		for (let category in categoryMap) {
-			let serviceOptions: sqlops.ServiceOption[] = categoryMap[category];
+			let serviceOptions: azdata.ServiceOption[] = categoryMap[category];
 			let bodyContainer = $().element('table', { class: 'optionsDialog-table' }, (tableContainer: Builder) => {
 				this.fillInOptions(tableContainer, serviceOptions);
 			});

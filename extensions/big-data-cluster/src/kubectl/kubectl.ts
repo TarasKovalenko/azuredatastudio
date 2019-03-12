@@ -3,6 +3,9 @@
  *  Licensed under the Source EULA. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import * as nls from 'vscode-nls';
+const localize = nls.loadMessageBundle();
+
 import { Host } from './host';
 import { FS } from '../utility/fs';
 import { Shell, ShellResult } from '../utility/shell';
@@ -14,6 +17,8 @@ import { getToolPath } from '../config/config';
 export interface Kubectl {
     checkPresent(errorMessageMode: CheckPresentMessageMode): Promise<boolean>;
     asJson<T>(command: string): Promise<Errorable<T>>;
+    invokeAsync(command: string, stdin?: string): Promise<ShellResult | undefined>;
+    getContext(): Context;
 }
 
 interface Context {
@@ -30,13 +35,20 @@ class KubectlImpl implements Kubectl {
         this.context = { host : host, fs : fs, shell : shell, installDependenciesCallback : installDependenciesCallback, binFound : kubectlFound, binPath : 'kubectl' };
     }
 
-    private readonly context: Context;
+    readonly context: Context;
 
     checkPresent(errorMessageMode: CheckPresentMessageMode): Promise<boolean> {
         return checkPresent(this.context, errorMessageMode);
     }
     asJson<T>(command: string): Promise<Errorable<T>> {
         return asJson(this.context, command);
+    }
+    invokeAsync(command: string, stdin?: string): Promise<ShellResult | undefined> {
+        return invokeAsync(this.context, command, stdin);
+    }
+
+    getContext(): Context {
+        return this.context;
     }
 }
 
@@ -63,17 +75,17 @@ async function checkForKubectlInternal(context: Context, errorMessageMode: Check
     const bin = getToolPath(context.host, context.shell, binName);
 
     const contextMessage = getCheckKubectlContextMessage(errorMessageMode);
-    const inferFailedMessage = `Could not find "${binName}" binary.${contextMessage}`;
-    const configuredFileMissingMessage = `${bin} is not installed. ${contextMessage}`;
+    const inferFailedMessage = localize('binaryNotFound', 'Could not find {0} binary. {1}', binName, contextMessage);
+    const configuredFileMissingMessage = localize('binaryNotInstalled', '{0} is not installed. {1}', bin, contextMessage);
 
     return await binutil.checkForBinary(context, bin, binName, inferFailedMessage, configuredFileMissingMessage, errorMessageMode !== CheckPresentMessageMode.Silent);
 }
 
 function getCheckKubectlContextMessage(errorMessageMode: CheckPresentMessageMode): string {
     if (errorMessageMode === CheckPresentMessageMode.Activation) {
-        return ' SQL Server Big data cluster requires kubernetes.';
+        return localize('kubernetesRequired',' SQL Server Big data cluster requires kubernetes.');
     } else if (errorMessageMode === CheckPresentMessageMode.Command) {
-        return ' Cannot execute command.';
+        return localize('cannotExecuteCmd', ' Cannot execute command.');
     }
     return '';
 }
@@ -102,13 +114,13 @@ async function checkPossibleIncompatibility(context: Context): Promise<void> {
     checkedCompatibility = true;
     const compat = await compatibility.check((cmd) => asJson<compatibility.Version>(context, cmd));
     if (!compatibility.isGuaranteedCompatible(compat) && compat.didCheck) {
-        const versionAlert = `kubectl version ${compat.clientVersion} may be incompatible with cluster Kubernetes version ${compat.serverVersion}`;
+        const versionAlert = localize('kubectlVersionIncompatible', 'kubectl version ${0} may be incompatible with cluster Kubernetes version {1}', compat.clientVersion, compat.serverVersion);
         context.host.showWarningMessage(versionAlert);
     }
 }
 
 
-function baseKubectlPath(context: Context): string {
+export function baseKubectlPath(context: Context): string {
     let bin = getToolPath(context.host, context.shell, 'kubectl');
     if (!bin) {
         bin = 'kubectl';
@@ -119,7 +131,7 @@ function baseKubectlPath(context: Context): string {
 async function asJson<T>(context: Context, command: string): Promise<Errorable<T>> {
     const shellResult = await invokeAsync(context, command);
     if (!shellResult) {
-        return { succeeded: false, error: [`Unable to run command (${command})`] };
+        return { succeeded: false, error: [localize('cannotRunCommand', 'Unable to run command ({0})', command)] };
     }
 
     if (shellResult.code === 0) {

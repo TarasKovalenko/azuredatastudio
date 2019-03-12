@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 'use strict';
-import * as sqlops from 'sqlops';
+import * as azdata from 'azdata';
 import * as nls from 'vscode-nls';
 import * as vscode from 'vscode';
 import { DacFxDataModel } from '../api/models';
@@ -13,30 +13,33 @@ import { DacFxConfigPage } from '../api/dacFxConfigPage';
 
 const localize = nls.loadMessageBundle();
 
-export class ExportConfigPage extends DacFxConfigPage {
+export class ExtractConfigPage extends DacFxConfigPage {
 
-	protected readonly wizardPage: sqlops.window.WizardPage;
+	protected readonly wizardPage: azdata.window.WizardPage;
 	protected readonly instance: DataTierApplicationWizard;
 	protected readonly model: DacFxDataModel;
-	protected readonly view: sqlops.ModelView;
+	protected readonly view: azdata.ModelView;
 
-	private form: sqlops.FormContainer;
+	private form: azdata.FormContainer;
+	private versionTextBox: azdata.InputBoxComponent;
 
-	public constructor(instance: DataTierApplicationWizard, wizardPage: sqlops.window.WizardPage, model: DacFxDataModel, view: sqlops.ModelView) {
+	public constructor(instance: DataTierApplicationWizard, wizardPage: azdata.window.WizardPage, model: DacFxDataModel, view: azdata.ModelView) {
 		super(instance, wizardPage, model, view);
-		this.fileExtension = '.bacpac';
+		this.fileExtension = '.dacpac';
 	}
 
 	async start(): Promise<boolean> {
 		let databaseComponent = await this.createDatabaseDropdown();
 		let serverComponent = await this.createServerDropdown(false);
 		let fileBrowserComponent = await this.createFileBrowser();
+		let versionComponent = await this.createVersionTextBox();
 
 		this.form = this.view.modelBuilder.formContainer()
 			.withFormItems(
 				[
 					serverComponent,
 					databaseComponent,
+					versionComponent,
 					fileBrowserComponent,
 				], {
 					horizontal: true,
@@ -61,7 +64,7 @@ export class ExportConfigPage extends DacFxConfigPage {
 		});
 	}
 
-	private async createFileBrowser(): Promise<sqlops.FormComponent> {
+	private async createFileBrowser(): Promise<azdata.FormComponent> {
 		this.createFileBrowserParts();
 
 		// default filepath
@@ -72,9 +75,9 @@ export class ExportConfigPage extends DacFxConfigPage {
 			let fileUri = await vscode.window.showSaveDialog(
 				{
 					defaultUri: vscode.Uri.file(this.fileTextBox.value),
-					saveLabel: localize('dacfxExport.saveFile', 'Save'),
+					saveLabel: localize('dacfxExtract.saveFile', 'Save'),
 					filters: {
-						'bacpac Files': ['bacpac'],
+						'dacpac Files': ['dacpac'],
 					}
 				}
 			);
@@ -93,8 +96,27 @@ export class ExportConfigPage extends DacFxConfigPage {
 
 		return {
 			component: this.fileTextBox,
-			title: localize('dacFxExport.fileTextboxTitle', 'File Location'),
+			title: localize('dacFxExtract.fileTextboxTitle', 'File Location'),
 			actions: [this.fileButton]
+		};
+	}
+
+	private async createVersionTextBox(): Promise<azdata.FormComponent> {
+		this.versionTextBox = this.view.modelBuilder.inputBox().withProperties({
+			required: true
+		}).component();
+
+		// default filepath
+		this.versionTextBox.value = '1.0.0.0';
+		this.model.version = this.versionTextBox.value;
+
+		this.versionTextBox.onTextChanged(async () => {
+			this.model.version = this.versionTextBox.value;
+		});
+
+		return {
+			component: this.versionTextBox,
+			title: localize('dacFxExtract.versionTextboxTitle', 'Version (use x.x.x.x where x is a number)'),
 		};
 	}
 }
