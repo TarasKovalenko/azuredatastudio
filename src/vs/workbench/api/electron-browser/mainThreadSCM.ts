@@ -3,12 +3,11 @@
  *  Licensed under the Source EULA. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { TPromise } from 'vs/base/common/winjs.base';
 import { URI, UriComponents } from 'vs/base/common/uri';
-import { Event, Emitter, debounceEvent } from 'vs/base/common/event';
+import { Event, Emitter } from 'vs/base/common/event';
 import { assign } from 'vs/base/common/objects';
 import { IDisposable, dispose } from 'vs/base/common/lifecycle';
-import { ISCMService, ISCMRepository, ISCMProvider, ISCMResource, ISCMResourceGroup, ISCMResourceDecorations, IInputValidation } from 'vs/workbench/services/scm/common/scm';
+import { ISCMService, ISCMRepository, ISCMProvider, ISCMResource, ISCMResourceGroup, ISCMResourceDecorations, IInputValidation } from 'vs/workbench/contrib/scm/common/scm';
 import { ExtHostContext, MainThreadSCMShape, ExtHostSCMShape, SCMProviderFeatures, SCMRawResourceSplices, SCMGroupFeatures, MainContext, IExtHostContext } from '../node/extHost.protocol';
 import { Command } from 'vs/editor/common/modes';
 import { extHostNamedCustomer } from 'vs/workbench/api/electron-browser/extHostCustomers';
@@ -22,14 +21,14 @@ class MainThreadSCMResourceGroup implements ISCMResourceGroup {
 	private _onDidSplice = new Emitter<ISplice<ISCMResource>>();
 	readonly onDidSplice = this._onDidSplice.event;
 
-	get hideWhenEmpty(): boolean { return this.features.hideWhenEmpty; }
+	get hideWhenEmpty(): boolean { return !!this.features.hideWhenEmpty; }
 
 	private _onDidChange = new Emitter<void>();
 	get onDidChange(): Event<void> { return this._onDidChange.event; }
 
 	constructor(
-		private sourceControlHandle: number,
-		private handle: number,
+		private readonly sourceControlHandle: number,
+		private readonly handle: number,
 		public provider: ISCMProvider,
 		public features: SCMGroupFeatures,
 		public label: string,
@@ -63,16 +62,16 @@ class MainThreadSCMResourceGroup implements ISCMResourceGroup {
 class MainThreadSCMResource implements ISCMResource {
 
 	constructor(
-		private proxy: ExtHostSCMShape,
-		private sourceControlHandle: number,
-		private groupHandle: number,
-		private handle: number,
+		private readonly proxy: ExtHostSCMShape,
+		private readonly sourceControlHandle: number,
+		private readonly groupHandle: number,
+		private readonly handle: number,
 		public sourceUri: URI,
 		public resourceGroup: ISCMResourceGroup,
 		public decorations: ISCMResourceDecorations
 	) { }
 
-	open(): Thenable<void> {
+	open(): Promise<void> {
 		return this.proxy.$executeResourceCommand(this.sourceControlHandle, this.groupHandle, this.handle);
 	}
 
@@ -93,7 +92,7 @@ class MainThreadSCMProvider implements ISCMProvider {
 	get id(): string { return this._id; }
 
 	readonly groups = new Sequence<MainThreadSCMResourceGroup>();
-	private _groupsByHandle: { [handle: number]: MainThreadSCMResourceGroup; } = Object.create(null);
+	private readonly _groupsByHandle: { [handle: number]: MainThreadSCMResourceGroup; } = Object.create(null);
 
 	// get groups(): ISequence<ISCMResourceGroup> {
 	// 	return {
@@ -130,11 +129,11 @@ class MainThreadSCMProvider implements ISCMProvider {
 	get onDidChange(): Event<void> { return this._onDidChange.event; }
 
 	constructor(
-		private proxy: ExtHostSCMShape,
-		private _handle: number,
-		private _contextValue: string,
-		private _label: string,
-		private _rootUri: URI | undefined,
+		private readonly proxy: ExtHostSCMShape,
+		private readonly _handle: number,
+		private readonly _contextValue: string,
+		private readonly _label: string,
+		private readonly _rootUri: URI | undefined,
 		@ISCMService scmService: ISCMService
 	) { }
 
@@ -143,11 +142,11 @@ class MainThreadSCMProvider implements ISCMProvider {
 		this._onDidChange.fire();
 
 		if (typeof features.commitTemplate !== 'undefined') {
-			this._onDidChangeCommitTemplate.fire(this.commitTemplate);
+			this._onDidChangeCommitTemplate.fire(this.commitTemplate!);
 		}
 
 		if (typeof features.statusBarCommands !== 'undefined') {
-			this._onDidChangeStatusBarCommands.fire(this.statusBarCommands);
+			this._onDidChangeStatusBarCommands.fire(this.statusBarCommands!);
 		}
 	}
 
@@ -203,14 +202,14 @@ class MainThreadSCMProvider implements ISCMProvider {
 					const icon = icons[0];
 					const iconDark = icons[1] || icon;
 					const decorations = {
-						icon: icon && URI.parse(icon),
-						iconDark: iconDark && URI.parse(iconDark),
+						icon: icon ? URI.parse(icon) : undefined,
+						iconDark: iconDark ? URI.parse(iconDark) : undefined,
 						tooltip,
 						strikeThrough,
 						faded,
 						source,
 						letter,
-						color: color && color.id
+						color: color ? color.id : undefined
 					};
 
 					return new MainThreadSCMResource(
@@ -242,13 +241,13 @@ class MainThreadSCMProvider implements ISCMProvider {
 		this.groups.splice(this.groups.elements.indexOf(group), 1);
 	}
 
-	getOriginalResource(uri: URI): TPromise<URI> {
+	async getOriginalResource(uri: URI): Promise<URI | null> {
 		if (!this.features.hasQuickDiffProvider) {
-			return TPromise.as(null);
+			return null;
 		}
 
-		return TPromise.wrap(this.proxy.$provideOriginalResource(this.handle, uri, CancellationToken.None))
-			.then(result => result && URI.revive(result));
+		const result = await this.proxy.$provideOriginalResource(this.handle, uri, CancellationToken.None);
+		return result && URI.revive(result);
 	}
 
 	toJSON(): any {
@@ -266,18 +265,18 @@ class MainThreadSCMProvider implements ISCMProvider {
 @extHostNamedCustomer(MainContext.MainThreadSCM)
 export class MainThreadSCM implements MainThreadSCMShape {
 
-	private _proxy: ExtHostSCMShape;
+	private readonly _proxy: ExtHostSCMShape;
 	private _repositories: { [handle: number]: ISCMRepository; } = Object.create(null);
 	private _inputDisposables: { [handle: number]: IDisposable; } = Object.create(null);
 	private _disposables: IDisposable[] = [];
 
 	constructor(
 		extHostContext: IExtHostContext,
-		@ISCMService private scmService: ISCMService
+		@ISCMService private readonly scmService: ISCMService
 	) {
 		this._proxy = extHostContext.getProxy(ExtHostContext.ExtHostSCM);
 
-		debounceEvent(scmService.onDidChangeSelectedRepositories, (_, e) => e, 100)
+		Event.debounce(scmService.onDidChangeSelectedRepositories, (_, e) => e, 100)
 			(this.onDidChangeSelectedRepositories, this, this._disposables);
 	}
 
@@ -420,20 +419,12 @@ export class MainThreadSCM implements MainThreadSCMShape {
 		}
 
 		if (enabled) {
-			repository.input.validateInput = (value, pos): TPromise<IInputValidation | undefined> => {
-				return TPromise.wrap(this._proxy.$validateInput(sourceControlHandle, value, pos).then(result => {
-					if (!result) {
-						return undefined;
-					}
-
-					return {
-						message: result[0],
-						type: result[1]
-					};
-				}));
+			repository.input.validateInput = async (value, pos): Promise<IInputValidation | undefined> => {
+				const result = await this._proxy.$validateInput(sourceControlHandle, value, pos);
+				return result && { message: result[0], type: result[1] };
 			};
 		} else {
-			repository.input.validateInput = () => TPromise.as(undefined);
+			repository.input.validateInput = async () => undefined;
 		}
 	}
 

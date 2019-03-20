@@ -8,6 +8,7 @@ import { IDisposable } from 'vs/base/common/lifecycle';
 import { MainThreadStatusBarShape, MainContext, IExtHostContext } from '../node/extHost.protocol';
 import { ThemeColor } from 'vs/platform/theme/common/themeService';
 import { extHostNamedCustomer } from 'vs/workbench/api/electron-browser/extHostCustomers';
+import { ExtensionIdentifier } from 'vs/platform/extensions/common/extensions';
 
 @extHostNamedCustomer(MainContext.MainThreadStatusBar)
 export class MainThreadStatusBar implements MainThreadStatusBarShape {
@@ -27,18 +28,18 @@ export class MainThreadStatusBar implements MainThreadStatusBarShape {
 		}
 	}
 
-	$setEntry(id: number, extensionId: string, text: string, tooltip: string, command: string, color: string | ThemeColor, alignment: MainThreadStatusBarAlignment, priority: number): void {
+	$setEntry(id: number, extensionId: ExtensionIdentifier, text: string, tooltip: string, command: string, color: string | ThemeColor, alignment: MainThreadStatusBarAlignment, priority: number): void {
 
 		// Dispose any old
 		this.$dispose(id);
 
 		// Add new
-		let entry = this._statusbarService.addEntry({ text, tooltip, command, color, extensionId }, alignment, priority);
+		const entry = this._statusbarService.addEntry({ text, tooltip, command, color, extensionId }, alignment, priority);
 		this._entries[id] = entry;
 	}
 
 	$dispose(id: number) {
-		let disposeable = this._entries[id];
+		const disposeable = this._entries[id];
 		if (disposeable) {
 			disposeable.dispose();
 		}

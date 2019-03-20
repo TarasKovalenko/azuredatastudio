@@ -12,16 +12,15 @@ import { IConnectionProfile, IConnectionProfileStore } from 'sql/platform/connec
 import { ConnectionProfile } from 'sql/platform/connection/common/connectionProfile';
 import { ConfigurationTarget } from 'vs/platform/configuration/common/configuration';
 import { WorkspaceConfigurationTestService } from 'sqltest/stubs/workspaceConfigurationTestService';
-import { IConfigurationValue, ConfigurationEditingService } from 'vs/workbench/services/configuration/node/configurationEditingService';
 import * as Constants from 'sql/platform/connection/common/constants';
 import { IConnectionProfileGroup, ConnectionProfileGroup } from 'sql/platform/connection/common/connectionProfileGroup';
-import { TPromise } from 'vs/base/common/winjs.base';
 import * as assert from 'assert';
 import { ProviderFeatures, ICapabilitiesService } from 'sql/platform/capabilities/common/capabilitiesService';
 import * as azdata from 'azdata';
 import { Emitter } from 'vs/base/common/event';
 import { ConnectionOptionSpecialType, ServiceOptionType } from 'sql/workbench/api/common/sqlExtHostTypes';
 import { CapabilitiesTestService } from 'sqltest/stubs/capabilitiesTestService';
+import { ConfigurationEditingService, IConfigurationValue } from 'vs/workbench/services/configuration/common/configurationEditingService';
 
 suite('SQL ConnectionConfig tests', () => {
 	let capabilitiesService: TypeMoq.Mock<ICapabilitiesService>;
@@ -953,4 +952,3 @@ suite('SQL ConnectionConfig tests', () => {
 	});
 
 });
-

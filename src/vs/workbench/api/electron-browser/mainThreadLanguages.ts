@@ -23,13 +23,13 @@ export class MainThreadLanguages implements MainThreadLanguagesShape {
 		// nothing
 	}
 
-	$getLanguages(): Thenable<string[]> {
+	$getLanguages(): Promise<string[]> {
 		return Promise.resolve(this._modeService.getRegisteredModes());
 	}
 
-	$changeLanguage(resource: UriComponents, languageId: string): Thenable<void> {
+	$changeLanguage(resource: UriComponents, languageId: string): Promise<void> {
 		const uri = URI.revive(resource);
-		let model = this._modelService.getModel(uri);
+		const model = this._modelService.getModel(uri);
 		if (!model) {
 			return Promise.reject(new Error('Invalid uri'));
 		}

@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { UriComponents } from 'vs/base/common/uri';
+import { IExtensionDescription } from 'vs/platform/extensions/common/extensions';
 
 export interface TaskDefinitionDTO {
 	type: string;
@@ -17,6 +18,7 @@ export interface TaskPresentationOptionsDTO {
 	panel?: number;
 	showReuseMessage?: boolean;
 	clear?: boolean;
+	group?: string;
 }
 
 export interface RunOptionsDTO {
@@ -60,8 +62,12 @@ export interface ShellQuotedStringDTO {
 export interface ShellExecutionDTO {
 	commandLine?: string;
 	command?: string | ShellQuotedStringDTO;
-	args?: (string | ShellQuotedStringDTO)[];
+	args?: Array<string | ShellQuotedStringDTO>;
 	options?: ShellExecutionOptionsDTO;
+}
+
+export interface CustomExecutionDTO {
+	customExecution: 'customExecution';
 }
 
 export interface TaskSourceDTO {
@@ -77,21 +83,26 @@ export interface TaskHandleDTO {
 
 export interface TaskDTO {
 	_id: string;
-	name: string;
-	execution: ProcessExecutionDTO | ShellExecutionDTO;
+	name?: string;
+	execution: ProcessExecutionDTO | ShellExecutionDTO | CustomExecutionDTO | undefined;
 	definition: TaskDefinitionDTO;
-	isBackground: boolean;
+	isBackground?: boolean;
 	source: TaskSourceDTO;
 	group?: string;
-	presentationOptions: TaskPresentationOptionsDTO;
+	presentationOptions?: TaskPresentationOptionsDTO;
 	problemMatchers: string[];
 	hasDefinedMatchers: boolean;
-	runOptions: RunOptionsDTO;
+	runOptions?: RunOptionsDTO;
+}
+
+export interface TaskSetDTO {
+	tasks: TaskDTO[];
+	extension: IExtensionDescription;
 }
 
 export interface TaskExecutionDTO {
 	id: string;
-	task: TaskDTO;
+	task: TaskDTO | undefined;
 }
 
 export interface TaskProcessStartedDTO {

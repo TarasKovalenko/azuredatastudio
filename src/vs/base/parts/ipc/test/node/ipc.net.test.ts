@@ -47,7 +47,7 @@ suite('IPC, Socket Protocol', () => {
 			const sub = b.onMessage(data => {
 				sub.dispose();
 				assert.equal(data.toString(), 'foobarfarboo');
-				resolve(null);
+				resolve(undefined);
 			});
 			a.send(Buffer.from('foobarfarboo'));
 		});
@@ -55,7 +55,7 @@ suite('IPC, Socket Protocol', () => {
 			const sub_1 = b.onMessage(data => {
 				sub_1.dispose();
 				assert.equal(data.readInt8(0), 123);
-				resolve(null);
+				resolve(undefined);
 			});
 			const buffer = Buffer.allocUnsafe(1);
 			buffer.writeInt8(123, 0);
@@ -81,43 +81,8 @@ suite('IPC, Socket Protocol', () => {
 		return new Promise(resolve => {
 			b.onMessage(msg => {
 				assert.deepEqual(JSON.parse(msg.toString()), data);
-				resolve(null);
+				resolve(undefined);
 			});
 		});
-	});
-
-	test('can devolve to a socket and evolve again without losing data', () => {
-		let resolve: (v: void) => void;
-		let result = new Promise<void>((_resolve, _reject) => {
-			resolve = _resolve;
-		});
-		const sender = new Protocol(stream);
-		const receiver1 = new Protocol(stream);
-
-		assert.equal(stream.listenerCount('data'), 2);
-		assert.equal(stream.listenerCount('end'), 2);
-
-		receiver1.onMessage((msg) => {
-			assert.equal(JSON.parse(msg.toString()).value, 1);
-
-			let buffer = receiver1.getBuffer();
-			receiver1.dispose();
-
-			assert.equal(stream.listenerCount('data'), 1);
-			assert.equal(stream.listenerCount('end'), 1);
-
-			const receiver2 = new Protocol(stream, buffer);
-			receiver2.onMessage((msg) => {
-				assert.equal(JSON.parse(msg.toString()).value, 2);
-				resolve(void 0);
-			});
-		});
-
-		const msg1 = { value: 1 };
-		const msg2 = { value: 2 };
-		sender.send(Buffer.from(JSON.stringify(msg1)));
-		sender.send(Buffer.from(JSON.stringify(msg2)));
-
-		return result;
 	});
 });
