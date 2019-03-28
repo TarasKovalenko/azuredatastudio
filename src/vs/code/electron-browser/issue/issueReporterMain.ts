@@ -16,7 +16,7 @@ import * as os from 'os';
 import { debounce } from 'vs/base/common/decorators';
 import * as platform from 'vs/base/common/platform';
 import { Disposable } from 'vs/base/common/lifecycle';
-import { getDelayedChannel } from 'vs/base/parts/ipc/node/ipc';
+import { getDelayedChannel } from 'vs/base/parts/ipc/common/ipc';
 import { connect as connectNet } from 'vs/base/parts/ipc/node/ipc.net';
 import { ServiceCollection } from 'vs/platform/instantiation/common/serviceCollection';
 import { IWindowConfiguration, IWindowsService } from 'vs/platform/windows/common/windows';
@@ -30,7 +30,7 @@ import { resolveCommonProperties } from 'vs/platform/telemetry/node/commonProper
 import { WindowsService } from 'vs/platform/windows/electron-browser/windowsService';
 import { MainProcessService, IMainProcessService } from 'vs/platform/ipc/electron-browser/mainProcessService';
 import { EnvironmentService } from 'vs/platform/environment/node/environmentService';
-import { IssueReporterModel } from 'vs/code/electron-browser/issue/issueReporterModel';
+import { IssueReporterModel, IssueReporterData as IssueReporterModelData } from 'vs/code/electron-browser/issue/issueReporterModel';
 import { IssueReporterData, IssueReporterStyles, IssueType, ISettingsSearchIssueReporterData, IssueReporterFeatures, IssueReporterExtensionData } from 'vs/platform/issue/common/issue';
 import BaseHtml from 'vs/code/electron-browser/issue/issueReporterPage';
 import { createSpdLogService } from 'vs/platform/log/node/spdlogService';
@@ -39,6 +39,7 @@ import { ILogService, getLogLevel } from 'vs/platform/log/common/log';
 import { OcticonLabel } from 'vs/base/browser/ui/octiconLabel/octiconLabel';
 import { normalizeGitHubUrl } from 'vs/code/electron-browser/issue/issueReporterUtil';
 import { Button } from 'vs/base/browser/ui/button/button';
+import { withUndefinedAsNull } from 'vs/base/common/types';
 
 const MAX_URL_LENGTH = platform.isWindows ? 2081 : 5400;
 
@@ -92,7 +93,7 @@ export class IssueReporter extends Disposable {
 			this.previewButton = new Button(issueReporterElement);
 		}
 
-		ipcRenderer.on('vscode:issuePerformanceInfoResponse', (_, info) => {
+		ipcRenderer.on('vscode:issuePerformanceInfoResponse', (_: unknown, info: Partial<IssueReporterData>) => {
 			this.logService.trace('issueReporter: Received performance data');
 			this.issueReporterModel.update(info);
 			this.receivedPerformanceInfo = true;
@@ -103,7 +104,7 @@ export class IssueReporter extends Disposable {
 			this.updatePreviewButtonState();
 		});
 
-		ipcRenderer.on('vscode:issueSystemInfoResponse', (_, info) => {
+		ipcRenderer.on('vscode:issueSystemInfoResponse', (_: unknown, info: any) => {
 			this.logService.trace('issueReporter: Received system data');
 			this.issueReporterModel.update({ systemInfo: info });
 			this.receivedSystemInfo = true;
@@ -211,7 +212,7 @@ export class IssueReporter extends Disposable {
 
 		styleTag.innerHTML = content.join('\n');
 		document.head.appendChild(styleTag);
-		document.body.style.color = styles.color || null;
+		document.body.style.color = withUndefinedAsNull(styles.color);
 	}
 
 	private handleExtensionData(extensions: IssueReporterExtensionData[]) {
@@ -702,13 +703,13 @@ export class IssueReporter extends Disposable {
 		if (issueType === IssueType.FeatureRequest) {
 			sourceSelect.append(...[
 				this.makeOption('', localize('selectSource', "Select source"), true),
-				this.makeOption('false', localize('vscode', "Visual Studio Code"), false),
+				this.makeOption('false', localize('azuredatastudio', "Azure Data Studio"), false),
 				this.makeOption('true', localize('extension', "An extension"), false)
 			]);
 		} else {
 			sourceSelect.append(...[
 				this.makeOption('', localize('selectSource', "Select source"), true),
-				this.makeOption('false', localize('vscode', "Visual Studio Code"), false),
+				this.makeOption('false', localize('azuredatastudio', "Azure Data Studio"), false),
 				this.makeOption('true', localize('extension', "An extension"), false),
 				this.makeOption('', localize('unknown', "Don't Know"), false)
 			]);
@@ -899,7 +900,7 @@ export class IssueReporter extends Disposable {
 		return `${repositoryUrl}${queryStringPrefix}title=${encodeURIComponent(issueTitle)}`;
 	}
 
-	private updateSystemInfo = (state) => {
+	private updateSystemInfo(state: IssueReporterModelData) {
 		const target = document.querySelector('.block-system .block-info');
 		if (target) {
 			let tableHtml = '';
@@ -968,14 +969,14 @@ export class IssueReporter extends Disposable {
 		}
 	}
 
-	private updateProcessInfo = (state) => {
+	private updateProcessInfo(state: IssueReporterModelData) {
 		const target = document.querySelector('.block-process .block-info');
 		if (target) {
 			target.innerHTML = `<code>${state.processInfo}</code>`;
 		}
 	}
 
-	private updateWorkspaceInfo = (state) => {
+	private updateWorkspaceInfo(state: IssueReporterModelData) {
 		document.querySelector('.block-workspace .block-info code')!.textContent = '\n' + state.workspaceInfo;
 	}
 
@@ -1075,9 +1076,13 @@ export class IssueReporter extends Disposable {
 
 // helper functions
 
-function hide(el) {
-	el.classList.add('hidden');
+function hide(el: Element | undefined | null) {
+	if (el) {
+		el.classList.add('hidden');
+	}
 }
-function show(el) {
-	el.classList.remove('hidden');
+function show(el: Element | undefined | null) {
+	if (el) {
+		el.classList.remove('hidden');
+	}
 }

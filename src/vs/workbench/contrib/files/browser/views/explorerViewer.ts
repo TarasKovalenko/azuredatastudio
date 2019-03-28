@@ -9,7 +9,7 @@ import * as glob from 'vs/base/common/glob';
 import { IListVirtualDelegate, ListDragOverEffect } from 'vs/base/browser/ui/list/list';
 import { IProgressService } from 'vs/platform/progress/common/progress';
 import { INotificationService } from 'vs/platform/notification/common/notification';
-import { IFileService, FileKind, IFileStat, FileOperationError, FileOperationResult } from 'vs/platform/files/common/files';
+import { IFileService, FileKind, FileOperationError, FileOperationResult } from 'vs/platform/files/common/files';
 import { IWorkbenchLayoutService } from 'vs/workbench/services/layout/browser/layoutService';
 import { IWorkspaceContextService, WorkbenchState } from 'vs/platform/workspace/common/workspace';
 import { IDisposable, Disposable, dispose, toDisposable } from 'vs/base/common/lifecycle';
@@ -63,10 +63,12 @@ export class ExplorerDelegate implements IListVirtualDelegate<ExplorerItem> {
 export class ExplorerDataSource implements IAsyncDataSource<ExplorerItem | ExplorerItem[], ExplorerItem> {
 
 	constructor(
-		@IProgressService private progressService: IProgressService,
-		@INotificationService private notificationService: INotificationService,
-		@IWorkbenchLayoutService private layoutService: IWorkbenchLayoutService,
-		@IFileService private fileService: IFileService
+		@IProgressService private readonly progressService: IProgressService,
+		@INotificationService private readonly notificationService: INotificationService,
+		@IWorkbenchLayoutService private readonly layoutService: IWorkbenchLayoutService,
+		@IFileService private readonly fileService: IFileService,
+		@IExplorerService private readonly explorerService: IExplorerService,
+		@IWorkspaceContextService private readonly contextService: IWorkspaceContextService
 	) { }
 
 	hasChildren(element: ExplorerItem | ExplorerItem[]): boolean {
@@ -78,9 +80,18 @@ export class ExplorerDataSource implements IAsyncDataSource<ExplorerItem | Explo
 			return Promise.resolve(element);
 		}
 
-		const promise = element.fetchChildren(this.fileService).then(undefined, e => {
-			// Do not show error for roots since we already use an explorer decoration to notify user
-			if (!(element instanceof ExplorerItem && element.isRoot)) {
+		const promise = element.fetchChildren(this.fileService, this.explorerService).then(undefined, e => {
+
+			if (element instanceof ExplorerItem && element.isRoot) {
+				if (this.contextService.getWorkbenchState() === WorkbenchState.FOLDER) {
+					// Single folder create a dummy explorer item to show error
+					const placeholder = new ExplorerItem(element.resource, undefined, false);
+					placeholder.isError = true;
+
+					return [placeholder];
+				}
+			} else {
+				// Do not show error for roots since we already use an explorer decoration to notify user
 				this.notificationService.error(e);
 			}
 
@@ -418,6 +429,7 @@ export class FileDragAndDrop implements ITreeDragAndDrop<ExplorerItem> {
 
 	private toDispose: IDisposable[];
 	private dropEnabled: boolean;
+	private isCopy: boolean;
 
 	constructor(
 		@INotificationService private notificationService: INotificationService,
@@ -538,7 +550,7 @@ export class FileDragAndDrop implements ITreeDragAndDrop<ExplorerItem> {
 	}
 
 	getDragURI(element: ExplorerItem): string | null {
-		if (this.explorerService.isEditable(element)) {
+		if (this.explorerService.isEditable(element) || (!this.isCopy && element.isReadonly)) {
 			return null;
 		}
 
@@ -554,6 +566,7 @@ export class FileDragAndDrop implements ITreeDragAndDrop<ExplorerItem> {
 	}
 
 	onDragStart(data: IDragAndDropData, originalEvent: DragEvent): void {
+		this.isCopy = (originalEvent.ctrlKey && !isMacintosh) || (originalEvent.altKey && isMacintosh);
 		const items = (data as ElementsDragAndDropData<ExplorerItem>).elements;
 		if (items && items.length && originalEvent.dataTransfer) {
 			// Apply some datatransfer types to allow for dragging the element outside of the application
@@ -586,7 +599,7 @@ export class FileDragAndDrop implements ITreeDragAndDrop<ExplorerItem> {
 		}
 		// In-Explorer DND (Move/Copy file)
 		else {
-			this.handleExplorerDrop(data, target, originalEvent);
+			this.handleExplorerDrop(data, target);
 		}
 	}
 
@@ -635,12 +648,12 @@ export class FileDragAndDrop implements ITreeDragAndDrop<ExplorerItem> {
 		if (resources && resources.length > 0) {
 
 			// Resolve target to check for name collisions and ask user
-			return this.fileService.resolveFile(target.resource).then((targetStat: IFileStat) => {
+			return this.fileService.resolveFile(target.resource).then(targetStat => {
 
 				// Check for name collisions
 				const targetNames = new Set<string>();
 				if (targetStat.children) {
-					targetStat.children.forEach((child) => {
+					targetStat.children.forEach(child => {
 						targetNames.add(isLinux ? child.name : child.name.toLowerCase());
 					});
 				}
@@ -700,15 +713,14 @@ export class FileDragAndDrop implements ITreeDragAndDrop<ExplorerItem> {
 		return Promise.resolve(undefined);
 	}
 
-	private handleExplorerDrop(data: IDragAndDropData, target: ExplorerItem, originalEvent: DragEvent): Promise<void> {
+	private handleExplorerDrop(data: IDragAndDropData, target: ExplorerItem): Promise<void> {
 		const elementsData = (data as ElementsDragAndDropData<ExplorerItem>).elements;
 		const items = distinctParents(elementsData, s => s.resource);
-		const isCopy = (originalEvent.ctrlKey && !isMacintosh) || (originalEvent.altKey && isMacintosh);
 
 		let confirmPromise: Promise<IConfirmationResult>;
 
 		// Handle confirm setting
-		const confirmDragAndDrop = !isCopy && this.configurationService.getValue<boolean>(FileDragAndDrop.CONFIRM_DND_SETTING_KEY);
+		const confirmDragAndDrop = !this.isCopy && this.configurationService.getValue<boolean>(FileDragAndDrop.CONFIRM_DND_SETTING_KEY);
 		if (confirmDragAndDrop) {
 			confirmPromise = this.dialogService.confirm({
 				message: items.length > 1 && items.every(s => s.isRoot) ? localize('confirmRootsMove', "Are you sure you want to change the order of multiple root folders in your workspace?")
@@ -736,7 +748,7 @@ export class FileDragAndDrop implements ITreeDragAndDrop<ExplorerItem> {
 			return updateConfirmSettingsPromise.then(() => {
 				if (res.confirmed) {
 					const rootDropPromise = this.doHandleRootDrop(items.filter(s => s.isRoot), target);
-					return Promise.all(items.filter(s => !s.isRoot).map(source => this.doHandleExplorerDrop(source, target, isCopy)).concat(rootDropPromise)).then(() => undefined);
+					return Promise.all(items.filter(s => !s.isRoot).map(source => this.doHandleExplorerDrop(source, target, this.isCopy)).concat(rootDropPromise)).then(() => undefined);
 				}
 
 				return Promise.resolve(undefined);

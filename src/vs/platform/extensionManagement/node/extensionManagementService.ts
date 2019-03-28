@@ -170,7 +170,7 @@ export class ExtensionManagementService extends Disposable implements IExtension
 
 	private collectFiles(extension: ILocalExtension): Promise<IFile[]> {
 
-		const collectFilesFromDirectory = async (dir): Promise<string[]> => {
+		const collectFilesFromDirectory = async (dir: string): Promise<string[]> => {
 			let entries = await pfs.readdir(dir);
 			entries = entries.map(e => path.join(dir, e));
 			const stats = await Promise.all(entries.map(e => pfs.stat(e)));
@@ -195,6 +195,9 @@ export class ExtensionManagementService extends Disposable implements IExtension
 	}
 
 	install(vsix: URI, type: ExtensionType = ExtensionType.User): Promise<IExtensionIdentifier> {
+		// {{SQL CARBON EDIT}}
+		let startTime = new Date().getTime();
+
 		this.logService.trace('ExtensionManagementService#install', vsix.toString());
 		return createCancelablePromise(token => {
 			return this.downloadVsix(vsix).then(downloadLocation => {
@@ -205,7 +208,7 @@ export class ExtensionManagementService extends Disposable implements IExtension
 						const identifier = { id: getGalleryExtensionId(manifest.publisher, manifest.name) };
 						let operation: InstallOperation = InstallOperation.Install;
 						// {{SQL CARBON EDIT - Check VSCode and ADS version}}
-						if (manifest.engines && manifest.engines.vscode && (!isEngineValid(manifest.engines.vscode, product.vscodeVersion) || (manifest.engines.azdata && !isEngineValid(manifest.engines.azdata, pkg.version)))) {
+						if (manifest.engines && ((manifest.engines.vscode && !isEngineValid(manifest.engines.vscode, product.vscodeVersion)) || (manifest.engines.azdata && !isEngineValid(manifest.engines.azdata, pkg.version)))) {
 							return Promise.reject(new Error(nls.localize('incompatible', "Unable to install version '{2}' of extension '{0}' as it is not compatible with Azure Data Studio '{1}'.", identifier.id, pkg.version, manifest.version)));
 						}
 						const identifierWithVersion = new ExtensionIdentifierWithVersion(identifier, manifest.version);
@@ -229,7 +232,11 @@ export class ExtensionManagementService extends Disposable implements IExtension
 								// Until there's a gallery for SQL Ops Studio, skip retrieving the metadata from the gallery
 								return this.installExtension({ zipPath, identifierWithVersion, metadata: null }, type, token)
 								.then(
-									local => { this._onDidInstallExtension.fire({ identifier, zipPath, local, operation: InstallOperation.Install }); return identifier; },
+									local => {
+										this.reportTelemetry(this.getTelemetryEvent(InstallOperation.Install), getLocalExtensionTelemetryData(local), new Date().getTime() - startTime, void 0);
+										this._onDidInstallExtension.fire({ identifier, zipPath, local, operation: InstallOperation.Install });
+										return identifier;
+									},
 									error => { this._onDidInstallExtension.fire({ identifier, zipPath, error, operation: InstallOperation.Install }); return Promise.reject(error); }
 								);
 								// return this.getMetadata(getGalleryExtensionId(manifest.publisher, manifest.name))
@@ -281,7 +288,7 @@ export class ExtensionManagementService extends Disposable implements IExtension
 			this.reportTelemetry(this.getTelemetryEvent(operation), getGalleryExtensionTelemetryData(extension), new Date().getTime() - startTime, undefined);
 		};
 
-		const onDidInstallExtensionFailure = (extension: IGalleryExtension, operation: InstallOperation, error) => {
+		const onDidInstallExtensionFailure = (extension: IGalleryExtension, operation: InstallOperation, error: Error) => {
 			const errorCode = error && (<ExtensionManagementError>error).code ? (<ExtensionManagementError>error).code : ERROR_UNKNOWN;
 			this.logService.error(`Failed to install extension:`, extension.identifier.id, error ? error.message : errorCode);
 			this._onDidInstallExtension.fire({ identifier: extension.identifier, gallery: extension, operation, error: errorCode });
@@ -311,9 +318,6 @@ export class ExtensionManagementService extends Disposable implements IExtension
 				const existingExtension = installed.filter(i => areSameExtensions(i.identifier, extension.identifier))[0];
 				if (existingExtension) {
 					operation = InstallOperation.Update;
-					if (semver.gt(existingExtension.manifest.version, extension.version)) {
-						await this.uninstall(existingExtension, true);
-					}
 				}
 
 				this.downloadInstallableExtension(extension, operation)
@@ -322,7 +326,10 @@ export class ExtensionManagementService extends Disposable implements IExtension
 					.then(local => this.installDependenciesAndPackExtensions(local, existingExtension)
 						.then(() => local, error => this.uninstall(local, true).then(() => Promise.reject(error), () => Promise.reject(error))))
 					.then(
-						local => {
+						async local => {
+							if (existingExtension && semver.neq(existingExtension.manifest.version, extension.version)) {
+								await this.setUninstalled(existingExtension);
+							}
 							this.installingExtensions.delete(key);
 							onDidInstallExtensionSuccess(extension, operation, local);
 							successCallback(null);
@@ -522,7 +529,7 @@ export class ExtensionManagementService extends Disposable implements IExtension
 						// filter out installed extensions
 						const names = dependenciesAndPackExtensions.filter(id => installed.every(({ identifier: galleryIdentifier }) => !areSameExtensions(galleryIdentifier, { id })));
 						if (names.length) {
-							return this.galleryService.query({ names, pageSize: dependenciesAndPackExtensions.length })
+							return this.galleryService.query({ names, pageSize: dependenciesAndPackExtensions.length }, CancellationToken.None)
 								.then(galleryResult => {
 									const extensionsToInstall = galleryResult.firstPage;
 									return Promise.all(extensionsToInstall.map(async e => {
@@ -602,11 +609,11 @@ export class ExtensionManagementService extends Disposable implements IExtension
 	}
 
 	private findGalleryExtensionById(uuid: string): Promise<IGalleryExtension> {
-		return this.galleryService.query({ ids: [uuid], pageSize: 1 }).then(galleryResult => galleryResult.firstPage[0]);
+		return this.galleryService.query({ ids: [uuid], pageSize: 1 }, CancellationToken.None).then(galleryResult => galleryResult.firstPage[0]);
 	}
 
 	private findGalleryExtensionByName(name: string): Promise<IGalleryExtension> {
-		return this.galleryService.query({ names: [name], pageSize: 1 }).then(galleryResult => galleryResult.firstPage[0]);
+		return this.galleryService.query({ names: [name], pageSize: 1 }, CancellationToken.None).then(galleryResult => galleryResult.firstPage[0]);
 	}
 
 	private joinErrors(errorOrErrors: (Error | string) | (Array<Error | string>)): Error {

@@ -23,7 +23,7 @@ import { Position, Parts, IWorkbenchLayoutService } from 'vs/workbench/services/
 import { IStorageService } from 'vs/platform/storage/common/storage';
 import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
 import { IViewletService } from 'vs/workbench/services/viewlet/browser/viewlet';
-import { IFileService } from 'vs/platform/files/common/files';
+import { IFileService, ILegacyFileService } from 'vs/platform/files/common/files';
 import { IPanelService } from 'vs/workbench/services/panel/common/panelService';
 import { IInstantiationService, ServicesAccessor } from 'vs/platform/instantiation/common/instantiation';
 import { ServiceCollection } from 'vs/platform/instantiation/common/serviceCollection';
@@ -46,73 +46,8 @@ import { WorkbenchContextKeysHandler } from 'vs/workbench/browser/contextkeys';
 import { coalesce } from 'vs/base/common/arrays';
 import { InstantiationService } from 'vs/platform/instantiation/common/instantiationService';
 import { Layout } from 'vs/workbench/browser/layout';
-
-// {{SQL CARBON EDIT}}
-import { IConnectionManagementService } from 'sql/platform/connection/common/connectionManagement';
-import { ConnectionManagementService } from 'sql/platform/connection/common/connectionManagementService';
-import { IConnectionDialogService } from 'sql/workbench/services/connection/common/connectionDialogService';
-import { ConnectionDialogService } from 'sql/workbench/services/connection/browser/connectionDialogService';
-import { IErrorMessageService } from 'sql/platform/errorMessage/common/errorMessageService';
-import { ErrorMessageService } from 'sql/workbench/services/errorMessage/browser/errorMessageService';
-import { ServerGroupController } from 'sql/workbench/services/serverGroup/browser/serverGroupController';
-import { IServerGroupController } from 'sql/platform/serverGroup/common/serverGroupController';
-import { IAngularEventingService } from 'sql/platform/angularEventing/common/angularEventingService';
-import { AngularEventingService } from 'sql/platform/angularEventing/node/angularEventingService';
-import { ICapabilitiesService, CapabilitiesService } from 'sql/platform/capabilities/common/capabilitiesService';
-import { ICredentialsService, CredentialsService } from 'sql/platform/credentials/common/credentialsService';
-import { ISerializationService, SerializationService } from 'sql/platform/serialization/common/serializationService';
-import { IMetadataService, MetadataService } from 'sql/platform/metadata/common/metadataService';
-import { IObjectExplorerService, ObjectExplorerService } from 'sql/workbench/services/objectExplorer/common/objectExplorerService';
-import { ITaskService, TaskService } from 'sql/platform/taskHistory/common/taskService';
-import { IQueryModelService } from 'sql/platform/query/common/queryModel';
-import { QueryModelService } from 'sql/platform/query/common/queryModelService';
-import { IQueryEditorService } from 'sql/workbench/services/queryEditor/common/queryEditorService';
-import { QueryEditorService } from 'sql/workbench/services/queryEditor/browser/queryEditorService';
-import { IQueryManagementService, QueryManagementService } from 'sql/platform/query/common/queryManagement';
-import { IEditorDescriptorService, EditorDescriptorService } from 'sql/workbench/services/queryEditor/common/editorDescriptorService';
-import { IScriptingService, ScriptingService } from 'sql/platform/scripting/common/scriptingService';
-import { IAdminService, AdminService } from 'sql/workbench/services/admin/common/adminService';
-import { IJobManagementService } from 'sql/platform/jobManagement/common/interfaces';
-import { JobManagementService } from 'sql/platform/jobManagement/common/jobManagementService';
-import { IDacFxService, DacFxService } from 'sql/platform/dacfx/common/dacFxService';
-import { IBackupService } from 'sql/platform/backup/common/backupService';
-import { BackupService } from 'sql/platform/backup/common/backupServiceImp';
-import { IBackupUiService } from 'sql/workbench/services/backup/common/backupUiService';
-import { BackupUiService } from 'sql/workbench/services/backup/browser/backupUiService';
-import { IRestoreDialogController, IRestoreService } from 'sql/platform/restore/common/restoreService';
-import { RestoreService, RestoreDialogController } from 'sql/platform/restore/common/restoreServiceImpl';
-import { INewDashboardTabDialogService } from 'sql/workbench/services/dashboard/common/newDashboardTabDialog';
-import { NewDashboardTabDialogService } from 'sql/workbench/services/dashboard/browser/newDashboardTabDialogService';
-import { IFileBrowserService } from 'sql/platform/fileBrowser/common/interfaces';
-import { FileBrowserService } from 'sql/platform/fileBrowser/common/fileBrowserService';
-import { IFileBrowserDialogController } from 'sql/workbench/services/fileBrowser/common/fileBrowserDialogController';
-import { FileBrowserDialogController } from 'sql/workbench/services/fileBrowser/browser/fileBrowserDialogController';
-import { IInsightsDialogService } from 'sql/workbench/services/insights/common/insightsDialogService';
-import { InsightsDialogService } from 'sql/workbench/services/insights/browser/insightsDialogService';
-import { IAccountManagementService } from 'sql/platform/accountManagement/common/interfaces';
-import { AccountManagementService } from 'sql/workbench/services/accountManagement/browser/accountManagementService';
-import { IProfilerService } from 'sql/workbench/services/profiler/common/interfaces';
-import { ProfilerService } from 'sql/workbench/services/profiler/common/profilerService';
-import { ISqlOAuthService } from 'sql/platform/oAuth/common/sqlOAuthService';
-import { SqlOAuthService } from 'sql/platform/oAuth/electron-browser/sqlOAuthServiceImpl';
-import { IClipboardService as sqlIClipboardService } from 'sql/platform/clipboard/common/clipboardService';
-import { ClipboardService as sqlClipboardService } from 'sql/platform/clipboard/electron-browser/clipboardService';
-import { AccountPickerService } from 'sql/platform/accountManagement/browser/accountPickerService';
-import { IAccountPickerService } from 'sql/platform/accountManagement/common/accountPicker';
-import { IResourceProviderService } from 'sql/workbench/services/resourceProvider/common/resourceProviderService';
-import { ResourceProviderService } from 'sql/workbench/services/resourceProvider/browser/resourceProviderService';
-import { IDashboardViewService } from 'sql/platform/dashboard/common/dashboardViewService';
-import { DashboardViewService } from 'sql/platform/dashboard/common/dashboardViewServiceImpl';
-import { IModelViewService } from 'sql/platform/modelComponents/common/modelViewService';
-import { ModelViewService } from 'sql/platform/modelComponents/common/modelViewServiceImpl';
-import { IDashboardService } from 'sql/platform/dashboard/browser/dashboardService';
-import { DashboardService } from 'sql/platform/dashboard/browser/dashboardServiceImpl';
-import { NotebookService } from 'sql/workbench/services/notebook/common/notebookServiceImpl';
-import { INotebookService } from 'sql/workbench/services/notebook/common/notebookService';
 import { ICommandLineProcessing } from 'sql/workbench/services/commandLine/common/commandLine';
 import { CommandLineService } from 'sql/workbench/services/commandLine/common/commandLineService';
-import { OEShimService, IOEShimService } from 'sql/parts/objectExplorer/common/objectExplorerViewTreeShim';
-// {{SQL CARBON EDIT}} - End
 
 export class Workbench extends Layout {
 
@@ -149,7 +84,7 @@ export class Workbench extends Layout {
 
 		// Inform user about loading issues from the loader
 		(<any>window).require.config({
-			onError: err => {
+			onError: (err: { errorCode: string; }) => {
 				if (err.errorCode === 'load') {
 					onUnexpectedError(new Error(localize('loaderErrorNative', "Failed to load a required file. Please restart the application to try again. Details: {0}", JSON.stringify(err))));
 				}
@@ -235,51 +170,15 @@ export class Workbench extends Layout {
 		}
 	}
 
-	// {{SQL CARBON EDIT}}
-	/*
-	private sendUsageEvents(telemetryService: ITelemetryService): void {
-		const dailyLastUseDate = Date.parse(this.storageService.get('telemetry.dailyLastUseDate', StorageScope.GLOBAL, '0'));
-		const weeklyLastUseDate = Date.parse(this.storageService.get('telemetry.weeklyLastUseDate', StorageScope.GLOBAL, '0'));
-		const monthlyLastUseDate = Date.parse(this.storageService.get('telemetry.monthlyLastUseDate', StorageScope.GLOBAL, '0'));
-
-		let today = new Date().toUTCString();
-
-		// daily user event
-		if (this.diffInDays(Date.parse(today), dailyLastUseDate) >= 1) {
-			// daily first use
-			telemetryService.publicLog('telemetry.dailyFirstUse', { dailyFirstUse: true });
-			this.storageService.store('telemetry.dailyLastUseDate', today, StorageScope.GLOBAL);
-		}
-
-		// weekly user event
-		if (this.diffInDays(Date.parse(today), weeklyLastUseDate) >= 7) {
-			// weekly first use
-			telemetryService.publicLog('telemetry.weeklyFirstUse', { weeklyFirstUse: true });
-			this.storageService.store('telemetry.weeklyLastUseDate', today, StorageScope.GLOBAL);
-		}
-
-		// monthly user events
-		if (this.diffInDays(Date.parse(today), monthlyLastUseDate) >= 30) {
-			telemetryService.publicLog('telemetry.monthlyUse', { monthlyFirstUse: true });
-			this.storageService.store('telemetry.monthlyLastUseDate', today, StorageScope.GLOBAL);
-		}
-	}
-
-	// {{SQL CARBON EDIT}}
-	private diffInDays(nowDate: number, lastUseDate: number): number {
-		return (nowDate - lastUseDate) / (24 * 3600 * 1000);
-	}
-	*/
-
 	private initServices(serviceCollection: ServiceCollection): IInstantiationService {
 
 		// Layout Service
 		serviceCollection.set(IWorkbenchLayoutService, this);
 
-		//
+		// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 		// NOTE: DO NOT ADD ANY OTHER SERVICE INTO THE COLLECTION HERE.
-		// INSTEAD, CONTRIBUTE IT VIA WORKBENCH.MAIN.TS
-		//
+		// CONTRIBUTE IT VIA WORKBENCH.MAIN.TS AND registerSingleton().
+		// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 		// All Contributed Services
 		const contributedServices = getServices();
@@ -289,63 +188,25 @@ export class Workbench extends Layout {
 
 		const instantiationService = new InstantiationService(serviceCollection, true);
 
-		// {{SQL CARBON EDIT}}
-		// SQL Tools services
-		serviceCollection.set(IDashboardService, instantiationService.createInstance(DashboardService));
-		serviceCollection.set(IDashboardViewService, instantiationService.createInstance(DashboardViewService));
-		serviceCollection.set(IModelViewService, instantiationService.createInstance(ModelViewService));
-		serviceCollection.set(IAngularEventingService, instantiationService.createInstance(AngularEventingService));
-		serviceCollection.set(INewDashboardTabDialogService, instantiationService.createInstance(NewDashboardTabDialogService));
-		serviceCollection.set(ISqlOAuthService, instantiationService.createInstance(SqlOAuthService));
-		serviceCollection.set(sqlIClipboardService, instantiationService.createInstance(sqlClipboardService));
-		serviceCollection.set(ICapabilitiesService, instantiationService.createInstance(CapabilitiesService));
-		serviceCollection.set(IErrorMessageService, instantiationService.createInstance(ErrorMessageService));
-		serviceCollection.set(IConnectionDialogService, instantiationService.createInstance(ConnectionDialogService));
-		serviceCollection.set(IServerGroupController, instantiationService.createInstance(ServerGroupController));
-		serviceCollection.set(ICredentialsService, instantiationService.createInstance(CredentialsService));
-		serviceCollection.set(IResourceProviderService, instantiationService.createInstance(ResourceProviderService));
-		serviceCollection.set(IAccountManagementService, instantiationService.createInstance(AccountManagementService, undefined));
-		serviceCollection.set(IConnectionManagementService, instantiationService.createInstance(ConnectionManagementService, undefined, undefined));
-		serviceCollection.set(ISerializationService, instantiationService.createInstance(SerializationService));
-		serviceCollection.set(IQueryManagementService, instantiationService.createInstance(QueryManagementService));
-		serviceCollection.set(IQueryModelService, instantiationService.createInstance(QueryModelService));
-		serviceCollection.set(IQueryEditorService, instantiationService.createInstance(QueryEditorService));
-		serviceCollection.set(IEditorDescriptorService, instantiationService.createInstance(EditorDescriptorService));
-		serviceCollection.set(ITaskService, instantiationService.createInstance(TaskService));
-		serviceCollection.set(IMetadataService, instantiationService.createInstance(MetadataService));
-		serviceCollection.set(IObjectExplorerService, instantiationService.createInstance(ObjectExplorerService));
-		serviceCollection.set(IOEShimService, instantiationService.createInstance(OEShimService));
-		serviceCollection.set(IScriptingService, instantiationService.createInstance(ScriptingService));
-		serviceCollection.set(IAdminService, instantiationService.createInstance(AdminService));
-		serviceCollection.set(IJobManagementService, instantiationService.createInstance(JobManagementService));
-		serviceCollection.set(IBackupService, instantiationService.createInstance(BackupService));
-		serviceCollection.set(IBackupUiService, instantiationService.createInstance(BackupUiService));
-		serviceCollection.set(IRestoreService, instantiationService.createInstance(RestoreService));
-		serviceCollection.set(IRestoreDialogController, instantiationService.createInstance(RestoreDialogController));
-		serviceCollection.set(IFileBrowserService, instantiationService.createInstance(FileBrowserService));
-		serviceCollection.set(IFileBrowserDialogController, instantiationService.createInstance(FileBrowserDialogController));
-		serviceCollection.set(IInsightsDialogService, instantiationService.createInstance(InsightsDialogService));
-		serviceCollection.set(INotebookService, instantiationService.createInstance(NotebookService));
-		serviceCollection.set(IAccountPickerService, instantiationService.createInstance(AccountPickerService));
-		serviceCollection.set(IProfilerService, instantiationService.createInstance(ProfilerService));
+		// {{SQL CARBON EDIT }}
+		// TODO@Davidshi commandLineService currently has no referents, so force its creation
 		serviceCollection.set(ICommandLineProcessing, instantiationService.createInstance(CommandLineService));
-		serviceCollection.set(IDacFxService, instantiationService.createInstance(DacFxService));
-
 		// {{SQL CARBON EDIT}} - End
 
 		// Wrap up
 		instantiationService.invokeFunction(accessor => {
 			const lifecycleService = accessor.get(ILifecycleService);
 
-			// TODO@Ben TODO@Sandeep debt around cyclic dependencies
-			const fileService = accessor.get(IFileService);
-			const configurationService = accessor.get(IConfigurationService) as any;
-
-			if (typeof configurationService.acquireFileService === 'function') {
-				configurationService.acquireFileService(fileService);
+			// TODO@Ben legacy file service
+			const fileService = accessor.get(IFileService) as any;
+			if (typeof fileService.setLegacyService === 'function') {
+				fileService.setLegacyService(accessor.get(ILegacyFileService));
 			}
 
-			if (typeof configurationService.acquireInstantiationService === 'function') {
+			// TODO@Sandeep debt around cyclic dependencies
+			const configurationService = accessor.get(IConfigurationService) as any;
+			if (typeof configurationService.acquireFileService === 'function') {
+				configurationService.acquireFileService(fileService);
 				configurationService.acquireInstantiationService(instantiationService);
 			}
 

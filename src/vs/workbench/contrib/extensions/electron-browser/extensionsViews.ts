@@ -44,6 +44,7 @@ import { IAction } from 'vs/base/common/actions';
 import { ExtensionType } from 'vs/platform/extensions/common/extensions';
 import { IWorkbenchThemeService } from 'vs/workbench/services/themes/common/workbenchThemeService';
 import product from 'vs/platform/product/node/product';
+import { CancelablePromise, createCancelablePromise } from 'vs/base/common/async';
 
 class ExtensionsViewState extends Disposable implements IExtensionsViewState {
 
@@ -69,6 +70,7 @@ export class ExtensionsListView extends ViewletPanel {
 	private badge: CountBadge;
 	protected badgeContainer: HTMLElement;
 	private list: WorkbenchPagedList<IExtension> | null;
+	private queryRequest: { query: string, request: CancelablePromise<IPagedModel<IExtension>> } | null;
 
 	constructor(
 		private options: IViewletViewOptions,
@@ -139,6 +141,14 @@ export class ExtensionsListView extends ViewletPanel {
 	}
 
 	async show(query: string): Promise<IPagedModel<IExtension>> {
+		if (this.queryRequest) {
+			if (this.queryRequest.query === query) {
+				return this.queryRequest.request;
+			}
+			this.queryRequest.request.cancel();
+			this.queryRequest = null;
+		}
+
 		const parsedQuery = Query.parse(query);
 
 		let options: IQueryOptions = {
@@ -151,22 +161,26 @@ export class ExtensionsListView extends ViewletPanel {
 			case 'name': options = assign(options, { sortBy: SortBy.Title }); break;
 		}
 
-		const successCallback = model => {
+		const successCallback = (model: IPagedModel<IExtension>) => {
+			this.queryRequest = null;
 			this.setModel(model);
 			return model;
 		};
-		const errorCallback = e => {
-			console.warn('Error querying extensions gallery', e);
+
+
+		const errorCallback = (e: Error) => {
 			const model = new PagedModel([]);
-			this.setModel(model, true);
-			return model;
+			if (!isPromiseCanceledError(e)) {
+				this.queryRequest = null;
+				console.warn('Error querying extensions gallery', e);
+				this.setModel(model, true);
+			}
+			return this.list ? this.list.model : model;
 		};
 
-		if (ExtensionsListView.isInstalledExtensionsQuery(query) || /@builtin/.test(query)) {
-			return await this.queryLocal(parsedQuery, options).then(successCallback).catch(errorCallback);
-		}
-
-		return await this.queryGallery(parsedQuery, options).then(successCallback).catch(errorCallback);
+		const request = createCancelablePromise(token => this.query(parsedQuery, options, token).then(successCallback).catch(errorCallback));
+		this.queryRequest = { query, request };
+		return request;
 	}
 
 	count(): number {
@@ -198,6 +212,36 @@ export class ExtensionsListView extends ViewletPanel {
 				});
 			}
 		}
+	}
+
+	private async query(query: Query, options: IQueryOptions, token: CancellationToken): Promise<IPagedModel<IExtension>> {
+		const idRegex = /@id:(([a-z0-9A-Z][a-z0-9\-A-Z]*)\.([a-z0-9A-Z][a-z0-9\-A-Z]*))/g;
+		const ids: string[] = [];
+		let idMatch;
+		while ((idMatch = idRegex.exec(query.value)) !== null) {
+			const name = idMatch[1];
+			ids.push(name);
+		}
+		if (ids.length) {
+			return this.queryByIds(ids, options, token);
+		}
+		if (ExtensionsListView.isInstalledExtensionsQuery(query.value) || /@builtin/.test(query.value)) {
+			return this.queryLocal(query, options);
+		}
+		return this.queryGallery(query, options, token);
+	}
+
+	private async queryByIds(ids: string[], options: IQueryOptions, token: CancellationToken): Promise<IPagedModel<IExtension>> {
+		const idsSet: Set<string> = ids.reduce((result, id) => { result.add(id.toLowerCase()); return result; }, new Set<string>());
+		const result = (await this.extensionsWorkbenchService.queryLocal())
+			.filter(e => idsSet.has(e.identifier.id.toLowerCase()));
+
+		if (result.length) {
+			return this.getPagedModel(this.sortExtensions(result, options));
+		}
+
+		return this.extensionsWorkbenchService.queryGallery({ names: ids, source: 'queryById' }, token)
+			.then(pager => this.getPagedModel(pager));
 	}
 
 	private async queryLocal(query: Query, options: IQueryOptions): Promise<IPagedModel<IExtension>> {
@@ -326,42 +370,27 @@ export class ExtensionsListView extends ViewletPanel {
 		return new PagedModel([]);
 	}
 
-	private async queryGallery(query: Query, options: IQueryOptions): Promise<IPagedModel<IExtension>> {
+	private async queryGallery(query: Query, options: IQueryOptions, token: CancellationToken): Promise<IPagedModel<IExtension>> {
 		const hasUserDefinedSortOrder = options.sortBy !== undefined;
 		if (!hasUserDefinedSortOrder && !query.value.trim()) {
 			options.sortBy = SortBy.InstallCount;
 		}
 
-		let value = query.value;
-
-		const idRegex = /@id:(([a-z0-9A-Z][a-z0-9\-A-Z]*)\.([a-z0-9A-Z][a-z0-9\-A-Z]*))/g;
-		let idMatch;
-		const names: string[] = [];
-		while ((idMatch = idRegex.exec(value)) !== null) {
-			const name = idMatch[1];
-			names.push(name);
-		}
-
-		if (names.length) {
-			return this.extensionsWorkbenchService.queryGallery({ names, source: 'queryById' })
-				.then(pager => this.getPagedModel(pager));
-		}
-
 		if (ExtensionsListView.isWorkspaceRecommendedExtensionsQuery(query.value)) {
-			return this.getWorkspaceRecommendationsModel(query, options);
+			return this.getWorkspaceRecommendationsModel(query, options, token);
 		} else if (ExtensionsListView.isKeymapsRecommendedExtensionsQuery(query.value)) {
-			return this.getKeymapRecommendationsModel(query, options);
+			return this.getKeymapRecommendationsModel(query, options, token);
 		} else if (/@recommended:all/i.test(query.value) || ExtensionsListView.isSearchRecommendedExtensionsQuery(query.value)) {
-			return this.getAllRecommendationsModel(query, options);
+			return this.getAllRecommendationsModel(query, options, token);
 		} else if (ExtensionsListView.isRecommendedExtensionsQuery(query.value)) {
-			return this.getRecommendationsModel(query, options);
+			return this.getRecommendationsModel(query, options, token);
 		// {{SQL CARBON EDIT}}
 		} else if (ExtensionsListView.isAllMarketplaceExtensionsQuery(query.value)) {
-			return this.getAllMarketplaceModel(query, options);
+			return this.getAllMarketplaceModel(query, options, token);
 		}
 
 		if (/\bcurated:([^\s]+)\b/.test(query.value)) {
-			return this.getCuratedModel(query, options);
+			return this.getCuratedModel(query, options, token);
 		}
 
 		let text = query.value;
@@ -385,7 +414,7 @@ export class ExtensionsListView extends ViewletPanel {
 
 			if (text !== query.value) {
 				options = assign(options, { text: text.substr(0, 350), source: 'file-extension-tags' });
-				return this.extensionsWorkbenchService.queryGallery(options).then(pager => this.getPagedModel(pager));
+				return this.extensionsWorkbenchService.queryGallery(options, token).then(pager => this.getPagedModel(pager));
 			}
 		}
 
@@ -406,7 +435,7 @@ export class ExtensionsListView extends ViewletPanel {
 			options.source = 'viewlet';
 		}
 
-		const pager = await this.extensionsWorkbenchService.queryGallery(options);
+		const pager = await this.extensionsWorkbenchService.queryGallery(options, token);
 
 		let positionToUpdate = 0;
 		for (const preferredResult of preferredResults) {
@@ -453,7 +482,7 @@ export class ExtensionsListView extends ViewletPanel {
 	}
 
 	// Get All types of recommendations, trimmed to show a max of 8 at any given time
-	private getAllRecommendationsModel(query: Query, options: IQueryOptions): Promise<IPagedModel<IExtension>> {
+	private getAllRecommendationsModel(query: Query, options: IQueryOptions, token: CancellationToken): Promise<IPagedModel<IExtension>> {
 		const value = query.value.replace(/@recommended:all/g, '').replace(/@recommended/g, '').trim().toLowerCase();
 
 		return this.extensionsWorkbenchService.queryLocal()
@@ -486,7 +515,7 @@ export class ExtensionsListView extends ViewletPanel {
 							return Promise.resolve(new PagedModel([]));
 						}
 						options.source = 'recommendations-all';
-						return this.extensionsWorkbenchService.queryGallery(assign(options, { names, pageSize: names.length }))
+						return this.extensionsWorkbenchService.queryGallery(assign(options, { names, pageSize: names.length }), token)
 							.then(pager => {
 								this.sortFirstPage(pager, names);
 								return this.getPagedModel(pager || []);
@@ -495,12 +524,12 @@ export class ExtensionsListView extends ViewletPanel {
 			});
 	}
 
-	private async getCuratedModel(query: Query, options: IQueryOptions): Promise<IPagedModel<IExtension>> {
+	private async getCuratedModel(query: Query, options: IQueryOptions, token: CancellationToken): Promise<IPagedModel<IExtension>> {
 		const value = query.value.replace(/curated:/g, '').trim();
 		const names = await this.experimentService.getCuratedExtensionsList(value);
 		if (Array.isArray(names) && names.length) {
 			options.source = `curated:${value}`;
-			const pager = await this.extensionsWorkbenchService.queryGallery(assign(options, { names, pageSize: names.length }));
+			const pager = await this.extensionsWorkbenchService.queryGallery(assign(options, { names, pageSize: names.length }), token);
 			this.sortFirstPage(pager, names);
 			return this.getPagedModel(pager || []);
 		}
@@ -508,7 +537,7 @@ export class ExtensionsListView extends ViewletPanel {
 	}
 
 	// Get All types of recommendations other than Workspace recommendations, trimmed to show a max of 8 at any given time
-	private getRecommendationsModel(query: Query, options: IQueryOptions): Promise<IPagedModel<IExtension>> {
+	private getRecommendationsModel(query: Query, options: IQueryOptions, token: CancellationToken): Promise<IPagedModel<IExtension>> {
 		const value = query.value.replace(/@recommended/g, '').trim().toLowerCase();
 
 		return this.extensionsWorkbenchService.queryLocal()
@@ -521,7 +550,7 @@ export class ExtensionsListView extends ViewletPanel {
 				return Promise.all([othersPromise, workspacePromise])
 					.then(([others, workspaceRecommendations]) => {
 						fileBasedRecommendations = fileBasedRecommendations.filter(x => workspaceRecommendations.every(({ extensionId }) => x.extensionId !== extensionId));
-						others = others.filter(x => x => workspaceRecommendations.every(({ extensionId }) => x.extensionId !== extensionId));
+						others = others.filter(x => workspaceRecommendations.every(({ extensionId }) => x.extensionId !== extensionId));
 
 						const names = this.getTrimmedRecommendations(local, value, fileBasedRecommendations, others, []);
 						const recommendationsWithReason = this.tipsService.getAllRecommendationsWithReason();
@@ -546,7 +575,7 @@ export class ExtensionsListView extends ViewletPanel {
 							return Promise.resolve(new PagedModel([]));
 						}
 						options.source = 'recommendations';
-						return this.extensionsWorkbenchService.queryGallery(assign(options, { names, pageSize: names.length }))
+						return this.extensionsWorkbenchService.queryGallery(assign(options, { names, pageSize: names.length }), token)
 							.then(pager => {
 								this.sortFirstPage(pager, names);
 								return this.getPagedModel(pager || []);
@@ -556,7 +585,7 @@ export class ExtensionsListView extends ViewletPanel {
 	}
 
 	// {{SQL CARBON EDIT}}
-	private getAllMarketplaceModel(query: Query, options: IQueryOptions): Promise<IPagedModel<IExtension>> {
+	private getAllMarketplaceModel(query: Query, options: IQueryOptions, token: CancellationToken): Promise<IPagedModel<IExtension>> {
 		const value = query.value.trim().toLowerCase();
 		return this.extensionsWorkbenchService.queryLocal()
 			.then(result => result.filter(e => e.type === ExtensionType.User))
@@ -564,7 +593,7 @@ export class ExtensionsListView extends ViewletPanel {
 				return this.tipsService.getOtherRecommendations().then((recommmended) => {
 					const installedExtensions = local.map(x => `${x.publisher}.${x.name}`);
 					options = assign(options, { text: value, source: 'searchText' });
-					return this.extensionsWorkbenchService.queryGallery(options).then((pager) => {
+					return this.extensionsWorkbenchService.queryGallery(options, token).then((pager) => {
 						// filter out installed extensions
 						pager.firstPage = pager.firstPage.filter((p) => {
 							return installedExtensions.indexOf(`${p.publisher}.${p.name}`) === -1;
@@ -624,7 +653,7 @@ export class ExtensionsListView extends ViewletPanel {
 		return installed.some(i => areSameExtensions(i.identifier, { id: recommendation.extensionId }));
 	}
 
-	private getWorkspaceRecommendationsModel(query: Query, options: IQueryOptions): Promise<IPagedModel<IExtension>> {
+	private getWorkspaceRecommendationsModel(query: Query, options: IQueryOptions, token: CancellationToken): Promise<IPagedModel<IExtension>> {
 		const value = query.value.replace(/@recommended:workspace/g, '').trim().toLowerCase();
 		return this.tipsService.getWorkspaceRecommendations()
 			.then(recommendations => {
@@ -640,12 +669,12 @@ export class ExtensionsListView extends ViewletPanel {
 					return Promise.resolve(new PagedModel([]));
 				}
 				options.source = 'recommendations-workspace';
-				return this.extensionsWorkbenchService.queryGallery(assign(options, { names, pageSize: names.length }))
+				return this.extensionsWorkbenchService.queryGallery(assign(options, { names, pageSize: names.length }), token)
 					.then(pager => this.getPagedModel(pager || []));
 			});
 	}
 
-	private getKeymapRecommendationsModel(query: Query, options: IQueryOptions): Promise<IPagedModel<IExtension>> {
+	private getKeymapRecommendationsModel(query: Query, options: IQueryOptions, token: CancellationToken): Promise<IPagedModel<IExtension>> {
 		const value = query.value.replace(/@recommended:keymaps/g, '').trim().toLowerCase();
 		const names: string[] = this.tipsService.getKeymapRecommendations().map(({ extensionId }) => extensionId)
 			.filter(extensionId => extensionId.toLowerCase().indexOf(value) > -1);
@@ -654,7 +683,7 @@ export class ExtensionsListView extends ViewletPanel {
 			return Promise.resolve(new PagedModel([]));
 		}
 		options.source = 'recommendations-keymaps';
-		return this.extensionsWorkbenchService.queryGallery(assign(options, { names, pageSize: names.length }))
+		return this.extensionsWorkbenchService.queryGallery(assign(options, { names, pageSize: names.length }), token)
 			.then(result => this.getPagedModel(result));
 	}
 
@@ -735,6 +764,10 @@ export class ExtensionsListView extends ViewletPanel {
 
 	dispose(): void {
 		super.dispose();
+		if (this.queryRequest) {
+			this.queryRequest.request.cancel();
+			this.queryRequest = null;
+		}
 		this.disposables = dispose(this.disposables);
 		this.list = null;
 	}

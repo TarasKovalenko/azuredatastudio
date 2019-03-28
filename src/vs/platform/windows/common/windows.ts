@@ -84,6 +84,7 @@ export interface SaveDialogOptions {
 
 export interface INewWindowOptions {
 	remoteAuthority?: string;
+	reuseWindow?: boolean;
 }
 
 export interface IDevToolsOptions {
@@ -149,9 +150,8 @@ export interface IWindowsService {
 	toggleSharedProcess(): Promise<void>;
 
 	// Global methods
-	openWindow(windowId: number, uris: IURIToOpen[], options?: IOpenSettings): Promise<void>;
+	openWindow(windowId: number, uris: IURIToOpen[], options: IOpenSettings): Promise<void>;
 	openNewWindow(options?: INewWindowOptions): Promise<void>;
-	showWindow(windowId: number): Promise<void>;
 	getWindows(): Promise<{ id: number; workspace?: IWorkspaceIdentifier; folderUri?: ISingleFolderWorkspaceIdentifier; title: string; filename?: string; }[]>;
 	getWindowCount(): Promise<number>;
 	log(severity: string, ...messages: string[]): Promise<void>;
@@ -182,6 +182,8 @@ export interface IOpenSettings {
 	forceOpenWorkspaceAsFile?: boolean;
 	diffMode?: boolean;
 	addMode?: boolean;
+	noRecentEntry?: boolean;
+	waitMarkerFileURI?: URI;
 	args?: ParsedArgs;
 }
 
@@ -227,7 +229,6 @@ export interface IWindowService {
 	unmaximizeWindow(): Promise<void>;
 	minimizeWindow(): Promise<void>;
 	onWindowTitleDoubleClick(): Promise<void>;
-	show(): Promise<void>;
 	showMessageBox(options: MessageBoxOptions): Promise<IMessageBoxResult>;
 	showSaveDialog(options: SaveDialogOptions): Promise<string>;
 	showOpenDialog(options: OpenDialogOptions): Promise<string[]>;
@@ -277,10 +278,11 @@ export function getTitleBarStyle(configurationService: IConfigurationService, en
 			return 'native'; // simple fullscreen does not work well with custom title style (https://github.com/Microsoft/vscode/issues/63291)
 		}
 
-		const style = configuration.titleBarStyle;
-		if (style === 'native' || style === 'custom') {
-			return style;
-		}
+		// {{SQL CARBON EDIT}} - Always use native toolbar
+		// const style = configuration.titleBarStyle;
+		// if (style === 'native' || style === 'custom') {
+		// 	return style;
+		// }
 	}
 
 	// {{SQL CARBON EDIT}} - Always use native toolbar
@@ -340,11 +342,12 @@ export interface IPath extends IPathData {
 
 export interface IPathsToWaitFor extends IPathsToWaitForData {
 	paths: IPath[];
+	waitMarkerFileUri: URI;
 }
 
 export interface IPathsToWaitForData {
 	paths: IPathData[];
-	waitMarkerFilePath: string;
+	waitMarkerFileUri: UriComponents;
 }
 
 export interface IPathData {

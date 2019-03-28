@@ -1,6 +1,6 @@
 {
   "name": "azuredatastudio",
-  "version": "1.5.1",
+  "version": "1.6.0",
   "distro": "8c3e97e3425cc9814496472ab73e076de2ba99ee",
   "author": {
     "name": "Microsoft Corporation"
@@ -22,8 +22,6 @@
     "update-localization-extension": "node build/npm/update-localization-extension.js",
     "smoketest": "cd test/smoke && node test/index.js",
     "monaco-compile-check": "tsc -p src/tsconfig.monaco.json --noEmit",
-    "download-builtin-extensions": "node build/lib/builtInExtensions.js",
-    "check-monaco-editor-compilation": "tsc -p src/tsconfig.monaco.json --noEmit",
     "tslint": "node node_modules/tslint/bin/tslint -c tslint-gci.json -p src/tsconfig.json",
     "strict-null-check": "tsc -p src/tsconfig.strictNullChecks.json",
     "strict-null-check-watch": "tsc -p src/tsconfig.strictNullChecks.json --watch"
@@ -44,7 +42,6 @@
     "ansi_up": "^3.0.0",
     "applicationinsights": "1.0.8",
     "chart.js": "^2.6.0",
-    "color-convert": "^0.5.3",
     "gc-signals": "^0.0.2",
     "getmac": "1.4.1",
     "graceful-fs": "4.1.11",
@@ -61,7 +58,6 @@
     "native-watchdog": "1.0.0",
     "ng2-charts": "^1.6.0",
     "node-pty": "0.8.1",
-    "nsfw": "1.1.0",
     "pretty-data": "^0.40.0",
     "reflect-metadata": "^0.1.8",
     "rxjs": "5.4.0",
@@ -70,7 +66,6 @@
     "slickgrid": "github:anthonydresser/SlickGrid#2.3.29",
     "spdlog": "0.7.2",
     "sudo-prompt": "8.2.0",
-    "svg.js": "^2.2.5",
     "v8-inspect-profiler": "^0.0.20",
     "vscode-chokidar": "1.6.5",
     "vscode-debugprotocol": "1.34.0",
@@ -79,7 +74,7 @@
     "vscode-ripgrep": "^1.2.5",
     "vscode-sqlite3": "4.0.7",
     "vscode-textmate": "^4.0.1",
-    "vscode-xterm": "3.13.0-beta1",
+    "vscode-xterm": "3.13.0-beta2",
     "yauzl": "^2.9.1",
     "yazl": "^2.4.3",
     "zone.js": "^0.8.4"
@@ -100,7 +95,6 @@
     "@types/winreg": "^1.2.30",
     "ansi-colors": "^3.2.3",
     "asar": "^0.14.0",
-    "azure-storage": "^0.3.1",
     "chromium-pickle-js": "^0.2.0",
     "clean-css": "3.4.6",
     "copy-webpack-plugin": "^4.5.2",
@@ -183,7 +177,7 @@
   },
   "optionalDependencies": {
     "vscode-windows-registry": "1.0.1",
-    "win-ca-lib": "https://github.com/chrmarti/win-ca/releases/download/v2.4.1-lib-test/win-ca-lib-2.4.1.tgz",
+    "vscode-windows-ca-certs": "0.1.0",
     "windows-foreground-love": "0.1.0",
     "windows-mutex": "0.2.1",
     "windows-process-tree": "0.2.3"

@@ -14,7 +14,7 @@ import { KeyCode } from 'vs/base/common/keyCodes';
 import { ITreeModel, ITreeNode, ITreeRenderer, ITreeEvent, ITreeMouseEvent, ITreeContextMenuEvent, ITreeFilter, ITreeNavigator, ICollapseStateChangeEvent, ITreeDragAndDrop, TreeDragOverBubble, TreeVisibility, TreeFilterResult, ITreeModelSpliceEvent } from 'vs/base/browser/ui/tree/tree';
 import { ISpliceable } from 'vs/base/common/sequence';
 import { IDragAndDropData, StaticDND, DragAndDropData } from 'vs/base/browser/dnd';
-import { range, equals } from 'vs/base/common/arrays';
+import { range, equals, distinctES6 } from 'vs/base/common/arrays';
 import { ElementsDragAndDropData } from 'vs/base/browser/ui/list/listView';
 import { domEvent } from 'vs/base/browser/event';
 import { fuzzyScore, FuzzyScore } from 'vs/base/common/filters';
@@ -805,7 +805,7 @@ class Trait<T> {
 	onDidModelSplice({ insertedNodes, deletedNodes }: ITreeModelSpliceEvent<T, any>): void {
 		if (!this.identityProvider) {
 			const set = this.createNodeSet();
-			const visit = node => set.delete(node);
+			const visit = (node: ITreeNode<T, any>) => set.delete(node);
 			deletedNodes.forEach(node => dfs(node, visit));
 			this.set(values(set));
 			return;
@@ -816,8 +816,8 @@ class Trait<T> {
 		this.nodes.forEach(node => nodesByIdentity.set(identityProvider.getId(node.element).toString(), node));
 
 		const toDeleteByIdentity = new Map<string, ITreeNode<T, any>>();
-		const toRemoveSetter = node => toDeleteByIdentity.set(identityProvider.getId(node.element).toString(), node);
-		const toRemoveDeleter = node => toDeleteByIdentity.delete(identityProvider.getId(node.element).toString());
+		const toRemoveSetter = (node: ITreeNode<T, any>) => toDeleteByIdentity.set(identityProvider.getId(node.element).toString(), node);
+		const toRemoveDeleter = (node: { element: T; }) => toDeleteByIdentity.delete(identityProvider.getId(node.element).toString());
 		deletedNodes.forEach(node => dfs(node, toRemoveSetter));
 		insertedNodes.forEach(node => dfs(node, toRemoveDeleter));
 
@@ -924,7 +924,7 @@ class TreeNodeList<T, TFilterData, TRef> extends List<ITreeNode<T, TFilterData>>
 		const additionalSelection: number[] = [];
 
 		elements.forEach((node, index) => {
-			if (this.selectionTrait.has(node)) {
+			if (this.focusTrait.has(node)) {
 				additionalFocus.push(start + index);
 			}
 
@@ -934,11 +934,11 @@ class TreeNodeList<T, TFilterData, TRef> extends List<ITreeNode<T, TFilterData>>
 		});
 
 		if (additionalFocus.length > 0) {
-			super.setFocus([...super.getFocus(), ...additionalFocus]);
+			super.setFocus(distinctES6([...super.getFocus(), ...additionalFocus]));
 		}
 
 		if (additionalSelection.length > 0) {
-			super.setSelection([...super.getSelection(), ...additionalSelection]);
+			super.setSelection(distinctES6([...super.getSelection(), ...additionalSelection]));
 		}
 	}
 
