@@ -1,2 +1,5 @@
-client/src/**
-client/tsconfig.json
+coverage/**
+src/**
+out/test/**
+coverageConfig.json
+tsconfig.json

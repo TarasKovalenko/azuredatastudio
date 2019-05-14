@@ -5,6 +5,8 @@
 	"version": "0.1.0",
 	"publisher": "Microsoft",
 	"preview": true,
+	"license": "https://raw.githubusercontent.com/Microsoft/azuredatastudio/master/LICENSE.txt",
+	"icon": "images/sqlserver.png",
 	"engines": {
 		"vscode": "^1.25.0",
 		"sqlops": "*"
@@ -638,7 +640,7 @@
 		"@types/node": "^8.0.24",
 		"mocha": "^5.2.0",
 		"should": "^13.2.1",
-		"vscode": "^1.1.26",
+		"vscodetestcover": "^1.0.2",
 		"typemoq": "^2.1.0"
 	}
 }
