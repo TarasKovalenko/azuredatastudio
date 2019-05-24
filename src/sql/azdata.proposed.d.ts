@@ -1909,7 +1909,7 @@ declare module 'azdata' {
 
 	export interface SchemaCompareServicesProvider extends DataProvider {
 		schemaCompare(sourceEndpointInfo: SchemaCompareEndpointInfo, targetEndpointInfo: SchemaCompareEndpointInfo, taskExecutionMode: TaskExecutionMode, deploymentOptions: DeploymentOptions): Thenable<SchemaCompareResult>;
-		schemaCompareGenerateScript(operationId: string, targetDatabaseName: string, scriptFilePath: string, taskExecutionMode: TaskExecutionMode): Thenable<ResultStatus>;
+		schemaCompareGenerateScript(operationId: string, targetServerName: string, targetDatabaseName: string, taskExecutionMode: TaskExecutionMode): Thenable<ResultStatus>;
 		schemaComparePublishChanges(operationId: string, targetServerName: string, targetDatabaseName: string, taskExecutionMode: TaskExecutionMode): Thenable<ResultStatus>;
 		schemaCompareGetDefaultOptions(): Thenable<SchemaCompareOptionsResult>;
 		schemaCompareIncludeExcludeNode(operationId: string, diffEntry: DiffEntry, IncludeRequest: boolean, taskExecutionMode: TaskExecutionMode): Thenable<ResultStatus>;
@@ -3126,6 +3126,26 @@ declare module 'azdata' {
 		cssClass?: string;
 		headerCssClass?: string;
 		toolTip?: string;
+		type?: ColumnType;
+		options?: CheckboxColumnOption | TextColumnOption;
+	}
+
+	export enum ColumnType {
+		text = 0,
+		checkBox = 1,
+		button = 2
+	}
+
+	export interface CheckboxColumnOption {
+		actionOnCheckbox: ActionOnCellCheckboxCheck;
+	}
+
+	export interface TextColumnOption {
+	}
+
+	export enum ActionOnCellCheckboxCheck {
+		selectRow = 0,
+		customAction = 1
 	}
 
 	export interface TableComponentProperties extends ComponentProperties {
@@ -3327,8 +3347,19 @@ declare module 'azdata' {
 		onRowSelected: vscode.Event<any>;
 	}
 
+	export interface ICheckboxCellActionEventArgs extends ICellActionEventArgs {
+		checked: boolean;
+	}
+
+	interface ICellActionEventArgs {
+		row: number;
+		column: number;
+		columnName: number;
+	}
+
 	export interface TableComponent extends Component, TableComponentProperties {
 		onRowSelected: vscode.Event<any>;
+		onCellAction?: vscode.Event<ICellActionEventArgs>;
 	}
 
 	export interface FileBrowserTreeComponent extends Component, FileBrowserTreeProperties {

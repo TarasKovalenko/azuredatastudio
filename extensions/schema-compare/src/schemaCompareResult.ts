@@ -35,6 +35,10 @@ export class SchemaCompareResult {
 	private targetNameComponent: azdata.TableComponent;
 	private deploymentOptions: azdata.DeploymentOptions;
 	private schemaCompareOptionDialog: SchemaCompareOptionsDialog;
+	private tablelistenersToDispose: vscode.Disposable[] = [];
+	private originalSourceExcludes = {};
+	private originalTargetExcludes = {};
+	private sourceTargetSwitched = false;
 
 	constructor(private sourceName: string, private targetName: string, private sourceEndpointInfo: azdata.SchemaCompareEndpointInfo, private targetEndpointInfo: azdata.SchemaCompareEndpointInfo) {
 		this.SchemaCompareActionMap = new Map<Number, string>();
@@ -166,7 +170,12 @@ export class SchemaCompareResult {
 		this.editor.openEditor();
 	}
 
-	private async execute(): Promise<void> {
+	// only for test
+	public getComparisionResult(): azdata.SchemaCompareResult {
+		return this.comparisonResult;
+	}
+
+	public async execute(): Promise<void> {
 		if (this.schemaCompareOptionDialog && this.schemaCompareOptionDialog.deploymentOptions) {
 			// take updates if any
 			this.deploymentOptions = this.schemaCompareOptionDialog.deploymentOptions;
@@ -186,24 +195,37 @@ export class SchemaCompareResult {
 			columns: [
 				{
 					value: localize('schemaCompare.typeColumn', 'Type'),
+					toolTip: localize('schemaCompare.typeColumn', 'Type'),
 					cssClass: 'align-with-header',
 					width: 50
 				},
 				{
 					value: localize('schemaCompare.sourceNameColumn', 'Source Name'),
+					toolTip: localize('schemaCompare.sourceNameColumn', 'Source Name'),
 					cssClass: 'align-with-header',
 					width: 90
 				},
 				{
+					value: localize('schemaCompare.includeColumnName', 'Include'),
+					toolTip: localize('schemaCompare.includeColumnName', 'Include'),
+					cssClass: 'align-with-header',
+					width: 60,
+					type: azdata.ColumnType.checkBox,
+					options: { actionOnCheckbox: azdata.ActionOnCellCheckboxCheck.customAction }
+				},
+				{
 					value: localize('schemaCompare.actionColumn', 'Action'),
+					toolTip: localize('schemaCompare.actionColumn', 'Action'),
 					cssClass: 'align-with-header',
 					width: 30
 				},
 				{
 					value: localize('schemaCompare.targetNameColumn', 'Target Name'),
+					toolTip: localize('schemaCompare.targetNameColumn', 'Target Name'),
 					cssClass: 'align-with-header',
 					width: 150
-				}]
+				}
+			],
 		});
 
 		this.splitView.addItem(this.differencesTable);
@@ -219,8 +241,18 @@ export class SchemaCompareResult {
 		this.compareButton.enabled = true;
 		this.optionsButton.enabled = true;
 
+		// explicitly exclude things that were excluded in previous compare
+		const thingsToExclude = this.sourceTargetSwitched ? this.originalTargetExcludes : this.originalSourceExcludes;
+		if (thingsToExclude) {
+			for (let item in thingsToExclude) {
+				if (<azdata.DiffEntry>thingsToExclude[item]) {
+					service.schemaCompareIncludeExcludeNode(this.comparisonResult.operationId, thingsToExclude[item], false, azdata.TaskExecutionMode.execute);
+				}
+			}
+		}
+
 		if (this.comparisonResult.differences.length > 0) {
-			this.flexModel.addItem(this.splitView);
+			this.flexModel.addItem(this.splitView, { CSSStyles: { 'overflow': 'hidden' } });
 
 			// only enable generate script button if the target is a db
 			if (this.targetEndpointInfo.endpointType === azdata.SchemaCompareEndpointType.Database) {
@@ -236,7 +268,7 @@ export class SchemaCompareResult {
 
 		let sourceText = '';
 		let targetText = '';
-		this.differencesTable.onRowSelected(() => {
+		this.tablelistenersToDispose.push(this.differencesTable.onRowSelected(() => {
 			let difference = this.comparisonResult.differences[this.differencesTable.selectedRows[0]];
 			if (difference !== undefined) {
 				sourceText = this.getFormattedScript(difference, true);
@@ -248,7 +280,53 @@ export class SchemaCompareResult {
 					title: diffEditorTitle
 				});
 			}
-		});
+		}));
+		this.tablelistenersToDispose.push(this.differencesTable.onCellAction(async (rowState) => {
+			let checkboxState = <azdata.ICheckboxCellActionEventArgs>rowState;
+			if (checkboxState) {
+				let diff = this.comparisonResult.differences[checkboxState.row];
+				await service.schemaCompareIncludeExcludeNode(this.comparisonResult.operationId, diff, checkboxState.checked, azdata.TaskExecutionMode.execute);
+				this.saveExcludeState(checkboxState);
+			}
+		}));
+	}
+
+	// save state based on source name if present otherwise target name (parity with SSDT)
+	private saveExcludeState(rowState: azdata.ICheckboxCellActionEventArgs) {
+		if (rowState) {
+			let diff = this.comparisonResult.differences[rowState.row];
+			let key = diff.sourceValue ? diff.sourceValue : diff.targetValue;
+			if (key) {
+				if (!this.sourceTargetSwitched) {
+					delete this.originalSourceExcludes[key];
+					if (!rowState.checked) {
+						this.originalSourceExcludes[key] = diff;
+					}
+				}
+				else {
+					delete this.originalTargetExcludes[key];
+					if (!rowState.checked) {
+						this.originalTargetExcludes[key] = diff;
+					}
+				}
+			}
+		}
+	}
+
+	private shouldDiffBeIncluded(diff: azdata.DiffEntry): boolean {
+		let key = diff.sourceValue ? diff.sourceValue : diff.targetValue;
+		if (key) {
+			if (this.sourceTargetSwitched === true && this.originalTargetExcludes[key]) {
+				this.originalTargetExcludes[key] = diff;
+				return false;
+			}
+			if (this.sourceTargetSwitched === false && this.originalSourceExcludes[key]) {
+				this.originalSourceExcludes[key] = diff;
+				return false;
+			}
+			return true;
+		}
+		return true;
 	}
 
 	private getAllDifferences(differences: azdata.DiffEntry[]): string[][] {
@@ -257,7 +335,8 @@ export class SchemaCompareResult {
 			differences.forEach(difference => {
 				if (difference.differenceType === azdata.SchemaDifferenceType.Object) {
 					if (difference.sourceValue !== null || difference.targetValue !== null) {
-						data.push([difference.name, difference.sourceValue, this.SchemaCompareActionMap[difference.updateAction], difference.targetValue]);
+						let state: boolean = this.shouldDiffBeIncluded(difference);
+						data.push([difference.name, difference.sourceValue, state, this.SchemaCompareActionMap[difference.updateAction], difference.targetValue]);
 					}
 				}
 			});
@@ -307,6 +386,9 @@ export class SchemaCompareResult {
 		});
 
 		this.differencesTable.selectedRows = null;
+		if (this.tablelistenersToDispose) {
+			this.tablelistenersToDispose.forEach(x => x.dispose());
+		}
 		this.resetButtons(false);
 		this.execute();
 	}
@@ -336,27 +418,8 @@ export class SchemaCompareResult {
 		}).component();
 
 		this.generateScriptButton.onDidClick(async (click) => {
-			// generate default filename
-			let now = new Date();
-			let datetime = now.getFullYear() + '-' + (now.getMonth() + 1) + '-' + now.getDate() + '-' + now.getHours() + '-' + now.getMinutes() + '-' + now.getSeconds();
-			let defaultFileName = `${this.targetName}_Update_${datetime}.sql`;
-
-			let fileUri = await vscode.window.showSaveDialog(
-				{
-					defaultUri: vscode.Uri.file(defaultFileName),
-					saveLabel: localize('schemaCompare.saveFile', 'Save'),
-					filters: {
-						'SQL Files': ['sql'],
-					}
-				}
-			);
-
-			if (!fileUri) {
-				return;
-			}
-
 			let service = await SchemaCompareResult.getService('MSSQL');
-			let result = await service.schemaCompareGenerateScript(this.comparisonResult.operationId, this.targetEndpointInfo.databaseName, fileUri.fsPath, azdata.TaskExecutionMode.execute);
+			let result = await service.schemaCompareGenerateScript(this.comparisonResult.operationId, this.targetEndpointInfo.serverName, this.targetEndpointInfo.databaseName, azdata.TaskExecutionMode.script);
 			if (!result || !result.success) {
 				vscode.window.showErrorMessage(
 					localize('schemaCompare.generateScriptErrorMessage', "Generate script failed: '{0}'", (result && result.errorMessage) ? result.errorMessage : 'Unknown'));
@@ -457,6 +520,8 @@ export class SchemaCompareResult {
 				]
 			});
 
+			// remember that source target have been toggled
+			this.sourceTargetSwitched = this.sourceTargetSwitched ? false : true;
 			this.startCompare();
 		});
 	}
