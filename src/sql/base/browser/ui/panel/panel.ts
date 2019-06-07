@@ -197,7 +197,6 @@ export class TabbedPanel extends Disposable {
 		if (this._currentDimensions) {
 			this._layoutCurrentTab(new DOM.Dimension(this._currentDimensions.width, this._currentDimensions.height - this.headersize));
 		}
-		this.focus();
 	}
 
 	public removeTab(tab: PanelTabIdentifier) {
@@ -298,7 +297,6 @@ export class TabbedPanel extends Disposable {
 		if (dimension) {
 			this._currentDimensions = dimension;
 			this.parent.style.height = dimension.height + 'px';
-			this.parent.style.height = dimension.width + 'px';
 			this.header.style.width = dimension.width + 'px';
 			this.body.style.width = dimension.width + 'px';
 			const bodyHeight = dimension.height - (this._headerVisible ? this.headersize : 0);
