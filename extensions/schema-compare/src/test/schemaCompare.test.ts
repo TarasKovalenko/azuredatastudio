@@ -38,7 +38,8 @@ const mockSourceEndpoint: azdata.SchemaCompareEndpointInfo = {
 	serverName: '',
 	databaseName: '',
 	ownerUri: '',
-	packageFilePath: mocksource
+	packageFilePath: mocksource,
+	connectionDetails: undefined
 };
 
 const mockTargetEndpoint: azdata.SchemaCompareEndpointInfo = {
@@ -47,7 +48,8 @@ const mockTargetEndpoint: azdata.SchemaCompareEndpointInfo = {
 	serverName: '',
 	databaseName: '',
 	ownerUri: '',
-	packageFilePath: mocktarget
+	packageFilePath: mocktarget,
+	connectionDetails: undefined
 };
 
 describe('SchemaCompareDialog.openDialog', function (): void {
@@ -69,7 +71,7 @@ describe('SchemaCompareResult.start', function (): void {
 
 		let result = new SchemaCompareResult();
 		await result.start(null);
-		let promise = new Promise(resolve => setTimeout(resolve, 3000)); // to ensure comparision result view is initialized
+		let promise = new Promise(resolve => setTimeout(resolve, 5000)); // to ensure comparison result view is initialized
 		await promise;
 
 		should(result.getComparisonResult() === undefined);
