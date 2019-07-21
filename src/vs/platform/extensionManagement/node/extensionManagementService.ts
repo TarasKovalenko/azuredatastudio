@@ -26,7 +26,7 @@ import { localizeManifest } from '../common/extensionNls';
 import { IEnvironmentService } from 'vs/platform/environment/common/environment';
 import { Limiter, createCancelablePromise, CancelablePromise, Queue } from 'vs/base/common/async';
 import { Event, Emitter } from 'vs/base/common/event';
-import * as semver from 'semver';
+import * as semver from 'semver-umd';
 import { URI } from 'vs/base/common/uri';
 import pkg from 'vs/platform/product/node/package';
 import { isMacintosh, isWindows } from 'vs/base/common/platform';
@@ -138,7 +138,7 @@ export class ExtensionManagementService extends Disposable implements IExtension
 	) {
 		super();
 		this.systemExtensionsPath = environmentService.builtinExtensionsPath;
-		this.extensionsPath = environmentService.extensionsPath;
+		this.extensionsPath = environmentService.extensionsPath!;
 		this.uninstalledPath = path.join(this.extensionsPath, '.obsolete');
 		this.uninstalledFileLimiter = new Queue();
 		this.manifestCache = this._register(new ExtensionsManifestCache(environmentService, this));
@@ -951,7 +951,9 @@ export class ExtensionManagementService extends Disposable implements IExtension
 	private _devSystemExtensionsFilePath: string | null = null;
 	private get devSystemExtensionsFilePath(): string {
 		if (!this._devSystemExtensionsFilePath) {
-			this._devSystemExtensionsFilePath = path.normalize(path.join(getPathFromAmdModule(require, ''), '..', 'build', 'builtInExtensions.json'));
+			// {{SQL CARBON EDIT}
+			let builtInPath = product.quality === 'stable' ? 'builtInExtensions' : 'builtInExtensions-insiders';
+			this._devSystemExtensionsFilePath = path.normalize(path.join(getPathFromAmdModule(require, ''), '..', 'build', `${builtInPath}.json`));
 		}
 		return this._devSystemExtensionsFilePath;
 	}

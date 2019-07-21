@@ -31,7 +31,7 @@ import { LogLevel } from 'vs/platform/log/common/log';
 import { IMarkerData } from 'vs/platform/markers/common/markers';
 import { IProgressOptions, IProgressStep } from 'vs/platform/progress/common/progress';
 import * as quickInput from 'vs/platform/quickinput/common/quickInput';
-import { RemoteAuthorityResolverErrorCode, ResolvedAuthority } from 'vs/platform/remote/common/remoteAuthorityResolver';
+import { RemoteAuthorityResolverErrorCode, ResolverResult } from 'vs/platform/remote/common/remoteAuthorityResolver';
 import * as statusbar from 'vs/platform/statusbar/common/statusbar';
 import { ClassifiedEvent, GDPRClassification, StrictPropertyCheck } from 'vs/platform/telemetry/common/gdprTypings';
 import { ITelemetryInfo } from 'vs/platform/telemetry/common/telemetry';
@@ -859,7 +859,7 @@ export interface IResolveAuthorityErrorResult {
 
 export interface IResolveAuthorityOKResult {
 	type: 'ok';
-	value: ResolvedAuthority;
+	value: ResolverResult;
 }
 
 export type IResolveAuthorityResult = IResolveAuthorityErrorResult | IResolveAuthorityOKResult;
@@ -1287,7 +1287,6 @@ export interface ExtHostCommentsShape {
 	$updateCommentThreadTemplate(commentControllerHandle: number, threadHandle: number, range: IRange): Promise<void>;
 	$deleteCommentThread(commentControllerHandle: number, commentThreadHandle: number): void;
 	$provideCommentingRanges(commentControllerHandle: number, uriComponents: UriComponents, token: CancellationToken): Promise<IRange[] | undefined>;
-	$provideReactionGroup(commentControllerHandle: number): Promise<modes.CommentReaction[] | undefined>;
 	$toggleReaction(commentControllerHandle: number, threadHandle: number, uri: UriComponents, comment: modes.Comment, reaction: modes.CommentReaction): Promise<void>;
 }
 
