@@ -12,6 +12,7 @@ import { QueryPlanInput } from 'sql/workbench/parts/queryPlan/common/queryPlanIn
 import { sqlModeId, untitledFilePrefix, getSupportedInputResource } from 'sql/workbench/common/customInputConverter';
 import * as TaskUtilities from 'sql/workbench/browser/taskUtilities';
 
+import { IMode } from 'vs/editor/common/modes';
 import { ITextModel } from 'vs/editor/common/model';
 import { IUntitledEditorService } from 'vs/workbench/services/untitled/common/untitledEditorService';
 import { IEditorService, ACTIVE_GROUP } from 'vs/workbench/services/editor/common/editorService';
@@ -41,12 +42,12 @@ export class QueryEditorService implements IQueryEditorService {
 
 	private static CHANGE_UNSUPPORTED_ERROR_MESSAGE = nls.localize(
 		'queryEditorServiceChangeUnsupportedError',
-		'Change Language Mode is not supported for unsaved queries'
+		"Change Language Mode is not supported for unsaved queries"
 	);
 
 	private static CHANGE_ERROR_MESSAGE = nls.localize(
 		'queryEditorServiceChangeError',
-		'Please save or discard changes before switching to/from the SQL Language Mode'
+		"Please save or discard changes before switching to/from the SQL Language Mode"
 	);
 
 	// service references for static functions
@@ -90,9 +91,10 @@ export class QueryEditorService implements IQueryEditorService {
 					}
 				}
 
-				let input = this._instantiationService.createInstance(QueryInput, objectName, fileInput, connectionProviderName);
+				const queryResultsInput: QueryResultsInput = this._instantiationService.createInstance(QueryResultsInput, docUri.toString());
+				let queryInput: QueryInput = this._instantiationService.createInstance(QueryInput, objectName, fileInput, queryResultsInput, connectionProviderName);
 
-				this._editorService.openEditor(input, { pinned: true })
+				this._editorService.openEditor(queryInput, { pinned: true })
 					.then((editor) => {
 						let params = <QueryInput>editor.input;
 						resolve(params);
@@ -286,7 +288,8 @@ export class QueryEditorService implements IQueryEditorService {
 
 		let newEditorInput: IEditorInput = undefined;
 		if (changingToSql) {
-			let queryInput: QueryInput = QueryEditorService.instantiationService.createInstance(QueryInput, '', input, undefined);
+			const queryResultsInput: QueryResultsInput = QueryEditorService.instantiationService.createInstance(QueryResultsInput, uri.toString());
+			let queryInput: QueryInput = QueryEditorService.instantiationService.createInstance(QueryInput, '', input, queryResultsInput, undefined);
 			newEditorInput = queryInput;
 		} else {
 			let uriCopy: URI = URI.from({ scheme: uri.scheme, authority: uri.authority, path: uri.path, query: uri.query, fragment: uri.fragment });
