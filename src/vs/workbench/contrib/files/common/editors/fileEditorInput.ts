@@ -5,7 +5,6 @@
 
 import { localize } from 'vs/nls';
 import { memoize } from 'vs/base/common/decorators';
-import { basename } from 'vs/base/common/path';
 import { dirname } from 'vs/base/common/resources';
 import { URI } from 'vs/base/common/uri';
 import { EncodingMode, ConfirmResult, EditorInput, IFileEditorInput, ITextEditorModel, Verbosity, IRevertOptions } from 'vs/workbench/common/editor';
@@ -34,7 +33,7 @@ export class FileEditorInput extends EditorInput implements IFileEditorInput {
 
 	private forceOpenAs: ForceOpenAs = ForceOpenAs.None;
 
-	private textModelReference: Promise<IReference<ITextEditorModel>> | null;
+	private textModelReference: Promise<IReference<ITextEditorModel>> | null = null;
 	private name: string;
 
 	/**
@@ -112,7 +111,7 @@ export class FileEditorInput extends EditorInput implements IFileEditorInput {
 
 	setPreferredEncoding(encoding: string): void {
 		this.preferredEncoding = encoding;
-		this.forceOpenAs = ForceOpenAs.Text; // encoding is a good hint to open the file as text
+		this.setForceOpenAsText(); // encoding is a good hint to open the file as text
 	}
 
 	getPreferredMode(): string | undefined {
@@ -130,7 +129,7 @@ export class FileEditorInput extends EditorInput implements IFileEditorInput {
 
 	setPreferredMode(mode: string): void {
 		this.preferredMode = mode;
-		this.forceOpenAs = ForceOpenAs.Text; // mode is a good hint to open the file as text
+		this.setForceOpenAsText(); // mode is a good hint to open the file as text
 	}
 
 	setForceOpenAsText(): void {
@@ -147,14 +146,14 @@ export class FileEditorInput extends EditorInput implements IFileEditorInput {
 
 	getName(): string {
 		if (!this.name) {
-			this.name = basename(this.labelService.getUriLabel(this.resource));
+			this.name = this.labelService.getUriBasenameLabel(this.resource);
 		}
 
 		return this.decorateLabel(this.name);
 	}
 
 	private get shortDescription(): string {
-		return basename(this.labelService.getUriLabel(dirname(this.resource)));
+		return this.labelService.getUriBasenameLabel(dirname(this.resource));
 	}
 
 	private get mediumDescription(): string {
@@ -166,21 +165,15 @@ export class FileEditorInput extends EditorInput implements IFileEditorInput {
 	}
 
 	getDescription(verbosity: Verbosity = Verbosity.MEDIUM): string {
-		let description: string;
 		switch (verbosity) {
 			case Verbosity.SHORT:
-				description = this.shortDescription;
-				break;
+				return this.shortDescription;
 			case Verbosity.LONG:
-				description = this.longDescription;
-				break;
+				return this.longDescription;
 			case Verbosity.MEDIUM:
 			default:
-				description = this.mediumDescription;
-				break;
+				return this.mediumDescription;
 		}
-
-		return description;
 	}
 
 	@memoize
@@ -199,21 +192,16 @@ export class FileEditorInput extends EditorInput implements IFileEditorInput {
 	}
 
 	getTitle(verbosity: Verbosity): string {
-		let title: string;
 		switch (verbosity) {
 			case Verbosity.SHORT:
-				title = this.shortTitle;
-				break;
+				// already decorated by getName()
+				return this.shortTitle;
 			default:
 			case Verbosity.MEDIUM:
-				title = this.mediumTitle;
-				break;
+				return this.decorateLabel(this.mediumTitle);
 			case Verbosity.LONG:
-				title = this.longTitle;
-				break;
+				return this.decorateLabel(this.longTitle);
 		}
-
-		return this.decorateLabel(title);
 	}
 
 	private decorateLabel(label: string): string {

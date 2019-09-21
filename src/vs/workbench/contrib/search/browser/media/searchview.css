@@ -60,6 +60,20 @@
 	display: inline-flex;
 }
 
+.search-view .search-widget .replace-input {
+	position: relative;
+	display: flex;
+	display: -webkit-flex;
+	vertical-align: middle;
+	width: auto !important;
+}
+
+.search-view .search-widget .replace-input > .controls {
+	position: absolute;
+	top: 3px;
+	right: 2px;
+}
+
 .search-view .search-widget .replace-container.disabled {
 	display: none;
 }
@@ -72,7 +86,7 @@
 	height: 25px;
 }
 
-.search-view .search-widget .replace-container .monaco-action-bar .action-item .icon {
+.search-view .search-widget .replace-container .monaco-action-bar .action-item .codicon {
 	background-repeat: no-repeat;
 	width: 20px;
 	height: 25px;

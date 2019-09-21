@@ -10,8 +10,7 @@ import { $ } from 'vs/base/browser/dom';
 import * as collections from 'vs/base/common/collections';
 import * as browser from 'vs/base/browser/browser';
 import { escape } from 'vs/base/common/strings';
-import product from 'vs/platform/product/node/product';
-import pkg from 'vs/platform/product/node/package';
+import product from 'vs/platform/product/common/product';
 import * as os from 'os';
 import { debounce } from 'vs/base/common/decorators';
 import * as platform from 'vs/base/common/platform';
@@ -31,15 +30,15 @@ import { WindowsService } from 'vs/platform/windows/electron-browser/windowsServ
 import { MainProcessService, IMainProcessService } from 'vs/platform/ipc/electron-browser/mainProcessService';
 import { EnvironmentService } from 'vs/platform/environment/node/environmentService';
 import { IssueReporterModel, IssueReporterData as IssueReporterModelData } from 'vs/code/electron-browser/issue/issueReporterModel';
-import { IssueReporterData, IssueReporterStyles, IssueType, ISettingsSearchIssueReporterData, IssueReporterFeatures, IssueReporterExtensionData } from 'vs/platform/issue/common/issue';
+import { IssueReporterData, IssueReporterStyles, IssueType, ISettingsSearchIssueReporterData, IssueReporterFeatures, IssueReporterExtensionData } from 'vs/platform/issue/node/issue';
 import BaseHtml from 'vs/code/electron-browser/issue/issueReporterPage';
-import { LogLevelSetterChannelClient, FollowerLogService } from 'vs/platform/log/common/logIpc';
+import { LoggerChannelClient, FollowerLogService } from 'vs/platform/log/common/logIpc';
 import { ILogService, getLogLevel } from 'vs/platform/log/common/log';
 import { OcticonLabel } from 'vs/base/browser/ui/octiconLabel/octiconLabel';
 import { normalizeGitHubUrl } from 'vs/code/electron-browser/issue/issueReporterUtil';
 import { Button } from 'vs/base/browser/ui/button/button';
 import { withUndefinedAsNull } from 'vs/base/common/types';
-import { SystemInfo, isRemoteDiagnosticError } from 'vs/platform/diagnostics/common/diagnosticsService';
+import { SystemInfo, isRemoteDiagnosticError } from 'vs/platform/diagnostics/common/diagnostics';
 import { SpdLogService } from 'vs/platform/log/node/spdlogService';
 
 const MAX_URL_LENGTH = 2045;
@@ -64,9 +63,9 @@ export function startup(configuration: IssueReporterConfiguration) {
 }
 
 export class IssueReporter extends Disposable {
-	private environmentService: IEnvironmentService;
-	private telemetryService: ITelemetryService;
-	private logService: ILogService;
+	private environmentService!: IEnvironmentService;
+	private telemetryService!: ITelemetryService;
+	private logService!: ILogService;
 	private readonly issueReporterModel: IssueReporterModel;
 	private numberOfSearchResultsDisplayed = 0;
 	private receivedSystemInfo = false;
@@ -74,7 +73,7 @@ export class IssueReporter extends Disposable {
 	private shouldQueueSearch = false;
 	private hasBeenSubmitted = false;
 
-	private readonly previewButton: Button;
+	private readonly previewButton!: Button;
 
 	constructor(configuration: IssueReporterConfiguration) {
 		super();
@@ -85,7 +84,7 @@ export class IssueReporter extends Disposable {
 		this.issueReporterModel = new IssueReporterModel({
 			issueType: configuration.data.issueType || IssueType.Bug,
 			versionInfo: {
-				vscodeVersion: `${pkg.name} ${pkg.version} (${product.commit || 'Commit unknown'}, ${product.date || 'Date unknown'})`,
+				vscodeVersion: `${product.nameShort} ${product.version} (${product.commit || 'Commit unknown'}, ${product.date || 'Date unknown'})`,
 				os: `${os.type()} ${os.arch()} ${os.release()}${isSnap ? ' snap' : ''}`
 			},
 			extensionsDisabled: !!this.environmentService.disableExtensions,
@@ -301,8 +300,8 @@ export class IssueReporter extends Disposable {
 		this.environmentService = new EnvironmentService(configuration, configuration.execPath);
 
 		const logService = new SpdLogService(`issuereporter${configuration.windowId}`, this.environmentService.logsPath, getLogLevel(this.environmentService));
-		const logLevelClient = new LogLevelSetterChannelClient(mainProcessService.getChannel('loglevel'));
-		this.logService = new FollowerLogService(logLevelClient, logService);
+		const loggerClient = new LoggerChannelClient(mainProcessService.getChannel('logger'));
+		this.logService = new FollowerLogService(loggerClient, logService);
 
 		const sharedProcess = (<IWindowsService>serviceCollection.get(IWindowsService)).whenSharedProcessReady()
 			.then(() => connectNet(this.environmentService.sharedIPCHandle, `window:${configuration.windowId}`));
@@ -311,7 +310,7 @@ export class IssueReporter extends Disposable {
 		if (!this.environmentService.isExtensionDevelopment && !this.environmentService.args['disable-telemetry'] && !!product.enableTelemetry) {
 			const channel = getDelayedChannel(sharedProcess.then(c => c.getChannel('telemetryAppender')));
 			const appender = combinedAppender(new TelemetryAppenderClient(channel), new LogAppender(logService));
-			const commonProperties = resolveCommonProperties(product.commit || 'Commit unknown', pkg.version, configuration.machineId, this.environmentService.installSourcePath);
+			const commonProperties = resolveCommonProperties(product.commit || 'Commit unknown', product.version, configuration.machineId, product.msftInternalDomains, this.environmentService.installSourcePath);
 			const piiPaths = this.environmentService.extensionsPath ? [this.environmentService.appRoot, this.environmentService.extensionsPath] : [this.environmentService.appRoot];
 			const config: ITelemetryServiceConfig = { appender, commonProperties, piiPaths };
 
@@ -941,8 +940,7 @@ export class IssueReporter extends Disposable {
 			}
 		}
 
-		// {{SQL CARBON EDIT}}
-		const queryStringPrefix = repositoryUrl.indexOf('?') === -1 ? '?' : '&';
+		const queryStringPrefix = product.reportIssueUrl && product.reportIssueUrl.indexOf('?') === -1 ? '?' : '&';
 		return `${repositoryUrl}${queryStringPrefix}title=${encodeURIComponent(issueTitle)}`;
 	}
 

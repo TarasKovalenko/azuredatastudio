@@ -17,7 +17,7 @@ const paths = require('./paths');
 // @ts-ignore
 const product = require('../product.json');
 // @ts-ignore
-const app = require('electron').app;
+const { app, protocol } = require('electron');
 
 // Enable portable support
 const portable = bootstrap.configurePortable();
@@ -32,6 +32,11 @@ app.setPath('userData', userDataPath);
 
 // Update cwd based on environment and platform
 setCurrentWorkingDirectory();
+
+// Register custom schemes with privileges
+protocol.registerSchemesAsPrivileged([
+	{ scheme: 'vscode-resource', privileges: { secure: true, supportFetchAPI: true, corsEnabled: true } }
+]);
 
 // Global app listeners
 registerListeners();
@@ -102,7 +107,7 @@ function onReady() {
 				});
 			};
 
-			// We recevied a valid nlsConfig from a user defined locale
+			// We received a valid nlsConfig from a user defined locale
 			if (nlsConfig) {
 				startup(nlsConfig);
 			}
@@ -133,7 +138,7 @@ function onReady() {
 }
 
 /**
- * @typedef {import('minimist').ParsedArgs} ParsedArgs
+ * @typedef	 {{ [arg: string]: any; '--'?: string[]; _: string[]; }} ParsedArgs
  *
  * @param {ParsedArgs} cliArgs
  */
@@ -186,7 +191,7 @@ function getUserDataPath(cliArgs) {
  * @returns {ParsedArgs}
  */
 function parseCLIArgs() {
-	const minimist = require('minimist');
+	const minimist = require('vscode-minimist');
 
 	return minimist(process.argv, {
 		string: [

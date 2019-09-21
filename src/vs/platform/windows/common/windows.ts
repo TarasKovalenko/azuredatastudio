@@ -94,14 +94,14 @@ export interface IDevToolsOptions {
 
 export interface IWindowsService {
 
-	_serviceBrand: any;
+	_serviceBrand: undefined;
 
-	onWindowOpen: Event<number>;
-	onWindowFocus: Event<number>;
-	onWindowBlur: Event<number>;
-	onWindowMaximize: Event<number>;
-	onWindowUnmaximize: Event<number>;
-	onRecentlyOpenedChange: Event<void>;
+	readonly onWindowOpen: Event<number>;
+	readonly onWindowFocus: Event<number>;
+	readonly onWindowBlur: Event<number>;
+	readonly onWindowMaximize: Event<number>;
+	readonly onWindowUnmaximize: Event<number>;
+	readonly onRecentlyOpenedChange: Event<void>;
 
 	// Dialogs
 	pickFileFolderAndOpen(options: INativeOpenDialogOptions): Promise<void>;
@@ -155,9 +155,6 @@ export interface IWindowsService {
 	openNewWindow(options?: INewWindowOptions): Promise<void>;
 	openExtensionDevelopmentHostWindow(args: ParsedArgs, env: IProcessEnvironment): Promise<void>;
 	getWindows(): Promise<{ id: number; workspace?: IWorkspaceIdentifier; folderUri?: ISingleFolderWorkspaceIdentifier; title: string; filename?: string; }[]>;
-	getWindowCount(): Promise<number>;
-	log(severity: string, args: string[]): Promise<void>;
-	showItemInFolder(path: URI): Promise<void>;
 	getActiveWindowId(): Promise<number | undefined>;
 
 	// This needs to be handled from browser process to prevent
@@ -167,7 +164,6 @@ export interface IWindowsService {
 	// TODO: this is a bit backwards
 	startCrashReporter(config: CrashReporterStartOptions): Promise<void>;
 
-	openAboutDialog(): Promise<void>;
 	resolveProxy(windowId: number, url: string): Promise<string | undefined>;
 }
 
@@ -221,7 +217,7 @@ export function isFileToOpen(uriToOpen: IURIToOpen): uriToOpen is IFileToOpen {
 
 export interface IWindowService {
 
-	_serviceBrand: any;
+	_serviceBrand: undefined;
 
 	readonly onDidChangeFocus: Event<boolean>;
 	readonly onDidChangeMaximize: Event<boolean>;
@@ -240,6 +236,8 @@ export interface IWindowService {
 	closeWorkspace(): Promise<void>;
 	updateTouchBar(items: ISerializableCommandAction[][]): Promise<void>;
 	enterWorkspace(path: URI): Promise<IEnterWorkspaceResult | undefined>;
+	// rationale: will eventually move to electron-browser
+	// tslint:disable-next-line: no-dom-globals
 	toggleFullScreen(target?: HTMLElement): Promise<void>;
 	setRepresentedFilename(fileName: string): Promise<void>;
 	getRecentlyOpened(): Promise<IRecentlyOpened>;
@@ -303,7 +301,7 @@ export function getTitleBarStyle(configurationService: IConfigurationService, en
 			return 'native'; // native tabs on sierra do not work with custom title style
 		}
 
-		const useSimpleFullScreen = false; //isMacintosh && configuration.nativeFullScreen === false;
+		const useSimpleFullScreen = isMacintosh && configuration.nativeFullScreen === false;
 		if (useSimpleFullScreen) {
 			return 'native'; // simple fullscreen does not work well with custom title style (https://github.com/Microsoft/vscode/issues/63291)
 		}
@@ -426,6 +424,7 @@ export interface IWindowConfiguration extends ParsedArgs {
 	folderUri?: ISingleFolderWorkspaceIdentifier;
 
 	remoteAuthority?: string;
+	connectionToken?: string;
 
 	zoomLevel?: number;
 	fullscreen?: boolean;
@@ -444,7 +443,6 @@ export interface IWindowConfiguration extends ParsedArgs {
 	filesToDiff?: IPath[];
 	filesToWait?: IPathsToWaitFor;
 	termProgram?: string;
-	connectionToken?: string;
 }
 
 export interface IRunActionInWindowRequest {

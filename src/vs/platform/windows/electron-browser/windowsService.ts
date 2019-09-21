@@ -16,13 +16,9 @@ import { IProcessEnvironment } from 'vs/base/common/platform';
 
 export class WindowsService implements IWindowsService {
 
-	_serviceBrand: any;
+	_serviceBrand: undefined;
 
 	private channel: IChannel;
-
-	constructor(@IMainProcessService mainProcessService: IMainProcessService) {
-		this.channel = mainProcessService.getChannel('windows');
-	}
 
 	get onWindowOpen(): Event<number> { return this.channel.listen('onWindowOpen'); }
 	get onWindowFocus(): Event<number> { return this.channel.listen('onWindowFocus'); }
@@ -30,6 +26,10 @@ export class WindowsService implements IWindowsService {
 	get onWindowMaximize(): Event<number> { return this.channel.listen('onWindowMaximize'); }
 	get onWindowUnmaximize(): Event<number> { return this.channel.listen('onWindowUnmaximize'); }
 	get onRecentlyOpenedChange(): Event<void> { return this.channel.listen('onRecentlyOpenedChange'); }
+
+	constructor(@IMainProcessService mainProcessService: IMainProcessService) {
+		this.channel = mainProcessService.getChannel('windows');
+	}
 
 	pickFileFolderAndOpen(options: INativeOpenDialogOptions): Promise<void> {
 		return this.channel.call('pickFileFolderAndOpen', options);
@@ -222,18 +222,6 @@ export class WindowsService implements IWindowsService {
 		return result;
 	}
 
-	getWindowCount(): Promise<number> {
-		return this.channel.call('getWindowCount');
-	}
-
-	log(severity: string, args: string[]): Promise<void> {
-		return this.channel.call('log', [severity, args]);
-	}
-
-	showItemInFolder(path: URI): Promise<void> {
-		return this.channel.call('showItemInFolder', path);
-	}
-
 	getActiveWindowId(): Promise<number | undefined> {
 		return this.channel.call('getActiveWindowId');
 	}
@@ -248,10 +236,6 @@ export class WindowsService implements IWindowsService {
 
 	updateTouchBar(windowId: number, items: ISerializableCommandAction[][]): Promise<void> {
 		return this.channel.call('updateTouchBar', [windowId, items]);
-	}
-
-	openAboutDialog(): Promise<void> {
-		return this.channel.call('openAboutDialog');
 	}
 
 	resolveProxy(windowId: number, url: string): Promise<string | undefined> {

@@ -50,7 +50,7 @@ class Directory implements IStat {
 
 export type Entry = File | Directory;
 
-export class InMemoryUserDataProvider extends Disposable implements IFileSystemProvider {
+export class InMemoryFileSystemProvider extends Disposable implements IFileSystemProvider {
 
 	readonly capabilities: FileSystemProviderCapabilities = FileSystemProviderCapabilities.FileReadWrite;
 	readonly onDidChangeCapabilities: Event<void> = Event.None;
@@ -209,8 +209,7 @@ export class InMemoryUserDataProvider extends Disposable implements IFileSystemP
 	readonly onDidChangeFile: Event<IFileChange[]> = this._onDidChangeFile.event;
 
 	private _bufferedChanges: IFileChange[] = [];
-	private _fireSoonHandle?: NodeJS.Timer;
-
+	private _fireSoonHandle?: any;
 
 	watch(resource: URI, opts: IWatchOptions): IDisposable {
 		// ignore, fires for all changes...
