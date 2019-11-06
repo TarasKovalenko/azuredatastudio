@@ -13,23 +13,12 @@ import { IMessage, MessageType } from 'vs/base/browser/ui/inputbox/inputBox';
 import * as aria from 'vs/base/browser/ui/aria/aria';
 import * as nls from 'vs/nls';
 import { renderFormattedText, renderText, FormattedTextRenderOptions } from 'vs/base/browser/formattedTextRenderer';
+import { IKeyboardEvent } from 'vs/base/browser/keyboardEvent';
+import { KeyCode } from 'vs/base/common/keyCodes';
+import { SelectBoxList } from 'vs/base/browser/ui/selectBox/selectBoxCustom';
 
 const $ = dom.$;
 
-//Map used to store names and alternative names for chart types.
-//This is mainly used for comparison when options are parsed into the constructor.
-const altNameHash: { [oldName: string]: string } = {
-	['horizontalBar']: 'Horziontal Bar',
-	['bar']: 'Bar',
-	['line']: 'Line',
-	['pie']: 'Pie',
-	['scatter']: 'Scatter',
-	['timeSeries']: 'Time Series',
-	['image']: 'Image',
-	['count']: 'Count',
-	['table']: 'Table',
-	['doughnut']: 'Doughnut'
-};
 
 export interface ISelectBoxStyles extends vsISelectBoxStyles {
 	disabledSelectBackground?: Color;
@@ -74,9 +63,7 @@ export class SelectBox extends vsSelectBox {
 
 
 	constructor(options: string[], selectedOption: string, contextViewProvider: IContextViewProvider, container?: HTMLElement, selectBoxOptions?: ISelectBoxOptions) {
-		//originally {text :option };
-		super(options.map(option => { return { text: SelectBox.parseName(option) }; }), 0, contextViewProvider, undefined, selectBoxOptions);
-
+		super(options.map(option => { return { text: option }; }), 0, contextViewProvider, undefined, selectBoxOptions);
 		this._optionsDictionary = new Map<string, number>();
 		for (let i = 0; i < options.length; i++) {
 			this._optionsDictionary.set(options[i], i);
@@ -107,17 +94,25 @@ export class SelectBox extends vsSelectBox {
 		this._register(focusTracker);
 		this._register(focusTracker.onDidBlur(() => this._hideMessage()));
 		this._register(focusTracker.onDidFocus(() => this._showMessage()));
+		// Stop propagation - we've handled the event already and letting it bubble up causes issues with parent
+		// controls handling it (such as dialog pages)
+		this.onkeydown(this.selectElement, (e: IKeyboardEvent) => {
+			if (e.keyCode === KeyCode.Enter) {
+				dom.EventHelper.stop(e, true);
+			}
+		});
+		if (this.selectBoxDelegate instanceof SelectBoxList) {
+			// SelectBoxList uses its own custom drop down list so we need to also stop propagation from that or it'll
+			// also bubble up
+			this.onkeydown(this.selectBoxDelegate.selectDropDownContainer, (e: IKeyboardEvent) => {
+				if (e.keyCode === KeyCode.Enter) {
+					dom.EventHelper.stop(e, true);
+				}
+			});
+		}
+
 	}
 
-	//static method that is used to replace original names of options into user-friendly ones for display.
-	private static parseName(oldName: string): string {
-		if (altNameHash[oldName] !== undefined) {
-			return altNameHash[oldName];
-		}
-		else {
-			return oldName;
-		}
-	}
 
 	public style(styles: ISelectBoxStyles): void {
 		super.style(styles);
@@ -249,8 +244,8 @@ export class SelectBox extends vsSelectBox {
 					dom.addClass(spanElement, this.classForType(message.type));
 
 					const styles = this.stylesForType(message.type);
-					spanElement.style.backgroundColor = styles.background ? styles.background.toString() : null;
-					spanElement.style.border = styles.border ? `1px solid ${styles.border}` : null;
+					spanElement.style.backgroundColor = styles.background ? styles.background.toString() : '';
+					spanElement.style.border = styles.border ? `1px solid ${styles.border}` : '';
 
 					dom.append(div, spanElement);
 

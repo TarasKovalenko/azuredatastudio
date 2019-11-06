@@ -17,6 +17,10 @@ import { IDisposable, Disposable } from 'vs/base/common/lifecycle';
 import { ModelComponentWrapper } from 'sql/workbench/browser/modelComponents/modelComponentWrapper.component';
 import { URI } from 'vs/base/common/uri';
 import * as nls from 'vs/nls';
+import { EventType, addDisposableListener } from 'vs/base/browser/dom';
+import { IKeyboardEvent, StandardKeyboardEvent } from 'vs/base/browser/keyboardEvent';
+import { endsWith } from 'vs/base/common/strings';
+import { firstIndex } from 'vs/base/common/arrays';
 
 
 export type IUserFriendlyIcon = string | URI | { light: string | URI; dark: string | URI };
@@ -172,6 +176,14 @@ export abstract class ComponentBase extends Disposable implements IComponent, On
 		this.setPropertyFromUI<azdata.ComponentProperties, string>((properties, display) => { properties.display = display; }, newValue);
 	}
 
+	public get ariaLabel(): string {
+		return this.getPropertyOrDefault<azdata.ComponentProperties, string>((props) => props.ariaLabel, '');
+	}
+
+	public set ariaLabel(newValue: string) {
+		this.setPropertyFromUI<azdata.ComponentProperties, string>((props, value) => props.ariaLabel = value, newValue);
+	}
+
 	public get CSSStyles(): { [key: string]: string } {
 		return this.getPropertyOrDefault<azdata.ComponentProperties, { [key: string]: string }>((props) => props.CSSStyles, {});
 	}
@@ -182,9 +194,9 @@ export abstract class ComponentBase extends Disposable implements IComponent, On
 
 	public convertSizeToNumber(size: number | string): number {
 		if (size && typeof (size) === 'string') {
-			if (size.toLowerCase().endsWith('px')) {
+			if (endsWith(size.toLowerCase(), 'px')) {
 				return +size.replace('px', '');
-			} else if (size.toLowerCase().endsWith('em')) {
+			} else if (endsWith(size.toLowerCase(), 'em')) {
 				return +size.replace('em', '') * 11;
 			}
 		} else if (!size) {
@@ -207,7 +219,7 @@ export abstract class ComponentBase extends Disposable implements IComponent, On
 			return defaultValue;
 		}
 		let convertedSize: string = size ? size.toString() : defaultValue;
-		if (!convertedSize.toLowerCase().endsWith('px') && !convertedSize.toLowerCase().endsWith('%')) {
+		if (!endsWith(convertedSize.toLowerCase(), 'px') && !endsWith(convertedSize.toLowerCase(), '%')) {
 			convertedSize = convertedSize + 'px';
 		}
 		return convertedSize;
@@ -248,6 +260,10 @@ export abstract class ComponentBase extends Disposable implements IComponent, On
 			}
 			return isValid;
 		});
+	}
+
+	protected onkeydown(domNode: HTMLElement, listener: (e: IKeyboardEvent) => void): void {
+		this._register(addDisposableListener(domNode, EventType.KEY_DOWN, (e: KeyboardEvent) => listener(new StandardKeyboardEvent(e))));
 	}
 }
 
@@ -294,7 +310,7 @@ export abstract class ContainerBase<T> extends ComponentBase {
 		if (!componentDescriptor) {
 			return false;
 		}
-		let index = this.items.findIndex(item => item.descriptor.id === componentDescriptor.id && item.descriptor.type === componentDescriptor.type);
+		let index = firstIndex(this.items, item => item.descriptor.id === componentDescriptor.id && item.descriptor.type === componentDescriptor.type);
 		if (index >= 0) {
 			this.items.splice(index, 1);
 			this._changeRef.detectChanges();
