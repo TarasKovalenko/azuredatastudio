@@ -22,6 +22,7 @@ import { IOpenerService } from 'vs/platform/opener/common/opener';
 import { URI } from 'vs/base/common/uri';
 import { firstIndex } from 'vs/base/common/arrays';
 import { values } from 'vs/base/common/collections';
+import { onUnexpectedError } from 'vs/base/common/errors';
 
 export class AccountManagementService implements IAccountManagementService {
 	// CONSTANTS ///////////////////////////////////////////////////////////
@@ -104,12 +105,7 @@ export class AccountManagementService implements IAccountManagementService {
 					}
 					return Promise.resolve();
 				});
-		}).then(
-			() => { },
-			reason => {
-				console.warn(`Account update handler encountered error: ${reason}`);
-			}
-		);
+		});
 
 	}
 
@@ -314,8 +310,8 @@ export class AccountManagementService implements IAccountManagementService {
 	 * Copy the user code to the clipboard and open a browser to the verification URI
 	 */
 	public copyUserCodeAndOpenBrowser(userCode: string, uri: string): void {
-		this._clipboardService.writeText(userCode);
-		this._openerService.open(URI.parse(uri));
+		this._clipboardService.writeText(userCode).catch(err => onUnexpectedError(err));
+		this._openerService.open(URI.parse(uri)).catch(err => onUnexpectedError(err));
 	}
 
 	// SERVICE MANAGEMENT METHODS //////////////////////////////////////////

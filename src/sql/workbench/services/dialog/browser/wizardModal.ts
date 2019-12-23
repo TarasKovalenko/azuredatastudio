@@ -23,7 +23,7 @@ import { append, $ } from 'vs/base/browser/dom';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
 import { ILogService } from 'vs/platform/log/common/log';
 import { IWorkbenchLayoutService } from 'vs/workbench/services/layout/browser/layoutService';
-import { ITextResourcePropertiesService } from 'vs/editor/common/services/resourceConfiguration';
+import { ITextResourcePropertiesService } from 'vs/editor/common/services/textResourceConfigurationService';
 import { IAdsTelemetryService } from 'sql/platform/telemetry/common/telemetry';
 import { onUnexpectedError } from 'vs/base/common/errors';
 
@@ -36,6 +36,7 @@ export class WizardModal extends Modal {
 	private _body: HTMLElement;
 
 	private _pageContainer: HTMLElement;
+	private _mpContainer: HTMLElement;
 
 	// Buttons
 	private _previousButton: Button;
@@ -130,9 +131,8 @@ export class WizardModal extends Modal {
 
 		this.initializeNavigation(this._body);
 
-		const mpContainer = append(this._body, $('div.dialog-message-and-page-container'));
-		mpContainer.append(this._messageElement);
-		this._pageContainer = append(mpContainer, $('div.dialogModal-page-container'));
+		this._mpContainer = append(this._body, $('div.dialog-message-and-page-container'));
+		this._pageContainer = append(this._mpContainer, $('div.dialogModal-page-container'));
 
 		this._wizard.pages.forEach(page => {
 			this.registerPage(page);
@@ -150,6 +150,15 @@ export class WizardModal extends Modal {
 			dialogPane.dispose();
 		});
 		this.updatePageNumbers();
+	}
+
+	protected set messagesElementVisible(visible: boolean) {
+		if (visible) {
+			this._mpContainer.prepend(this._messageElement);
+		} else {
+			// Let base class handle it
+			super.messagesElementVisible = false;
+		}
 	}
 
 	private updatePageNumbers(): void {

@@ -43,6 +43,7 @@ import { toErrorMessage } from 'vs/base/common/errorMessage';
 import { NotebookChangeType } from 'sql/workbench/contrib/notebook/common/models/contracts';
 import { IEnvironmentService } from 'vs/platform/environment/common/environment';
 import { find, firstIndex } from 'vs/base/common/arrays';
+import { onUnexpectedError } from 'vs/base/common/errors';
 
 export interface NotebookProviderProperties {
 	provider: string;
@@ -114,6 +115,7 @@ export class NotebookService extends Disposable implements INotebookService {
 	private _themeParticipant: IDisposable;
 	private _overrideEditorThemeSetting: boolean;
 	private _trustedCacheQueue: URI[] = [];
+	private _unTrustedCacheQueue: URI[] = [];
 	private _updateTrustCacheScheduler: RunOnceScheduler;
 
 	constructor(
@@ -161,7 +163,7 @@ export class NotebookService extends Disposable implements INotebookService {
 				this._register(this._queryManagementService.onHandlerAdded((queryType) => {
 					this.updateSQLRegistrationWithConnectionProviders();
 				}));
-			});
+			}).catch(err => onUnexpectedError(err));
 		}
 		if (extensionManagementService) {
 			this._register(extensionManagementService.onDidUninstallExtension(({ identifier }) => this.removeContributedProvidersFromCache(identifier, this._extensionService)));
@@ -530,7 +532,7 @@ export class NotebookService extends Disposable implements INotebookService {
 		});
 	}
 
-	private removeContributedProvidersFromCache(identifier: IExtensionIdentifier, extensionService: IExtensionService) {
+	private removeContributedProvidersFromCache(identifier: IExtensionIdentifier, extensionService: IExtensionService): void {
 		const notebookProvider = 'notebookProvider';
 		extensionService.getExtensions().then(i => {
 			let extension = find(i, c => c.identifier.value.toLowerCase() === identifier.id.toLowerCase());
@@ -540,7 +542,7 @@ export class NotebookService extends Disposable implements INotebookService {
 				let id = extension.contributes[notebookProvider].providerId;
 				delete this.providersMemento.notebookProviderCache[id];
 			}
-		});
+		}).catch(err => onUnexpectedError(err));
 	}
 
 	async isNotebookTrustCached(notebookUri: URI, isDirty: boolean): Promise<boolean> {
@@ -588,8 +590,12 @@ export class NotebookService extends Disposable implements INotebookService {
 			if (changeType === NotebookChangeType.Saved && firstIndex(this._trustedCacheQueue, uri => uri.toString() === notebookUriString) < 0) {
 				// Only save if it's trusted
 				let notebook = find(this.listNotebookEditors(), n => n.id === notebookUriString);
-				if (notebook && notebook.model.trustedMode) {
-					this._trustedCacheQueue.push(notebookUri);
+				if (notebook && notebook.model) {
+					if (notebook.model.trustedMode) {
+						this._trustedCacheQueue.push(notebookUri);
+					} else {
+						this._unTrustedCacheQueue.push(notebookUri);
+					}
 					this._updateTrustCacheScheduler.schedule();
 				}
 			}
@@ -624,7 +630,19 @@ export class NotebookService extends Disposable implements INotebookService {
 						};
 					}
 				}
-
+				this._trustedNotebooksMemento.saveMemento();
+			}
+			if (this._unTrustedCacheQueue.length > 0) {
+				// Copy out all items from the cache
+				let items = this._unTrustedCacheQueue;
+				this._unTrustedCacheQueue = [];
+				let trustedCache = this.trustedNotebooksMemento.trustedNotebooksCache;
+				//Remove the trusted intry from the cache
+				for (let i = 0; i < items.length; i++) {
+					if (trustedCache[items[i].toString()]) {
+						trustedCache[items[i].toString()] = null;
+					}
+				}
 				this._trustedNotebooksMemento.saveMemento();
 			}
 		} catch (err) {
