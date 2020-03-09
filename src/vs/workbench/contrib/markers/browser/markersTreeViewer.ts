@@ -51,6 +51,7 @@ import { IFileService } from 'vs/platform/files/common/files';
 import { domEvent } from 'vs/base/browser/event';
 import { StandardKeyboardEvent } from 'vs/base/browser/keyboardEvent';
 import { KeyCode } from 'vs/base/common/keyCodes';
+import { Progress } from 'vs/platform/progress/common/progress';
 
 export type TreeElement = ResourceMarkers | Marker | RelatedInformation;
 
@@ -642,7 +643,7 @@ export class MarkerViewModel extends Disposable {
 						this.codeActionsPromise = createCancelablePromise(cancellationToken => {
 							return getCodeActions(model, new Range(this.marker.range.startLineNumber, this.marker.range.startColumn, this.marker.range.endLineNumber, this.marker.range.endColumn), {
 								type: CodeActionTriggerType.Manual, filter: { include: CodeActionKind.QuickFix }
-							}, cancellationToken).then(actions => {
+							}, Progress.None, cancellationToken).then(actions => {
 								return this._register(actions);
 							});
 						});
@@ -855,6 +856,7 @@ export class ResourceDragAndDrop implements ITreeDragAndDrop<TreeElement> {
 registerThemingParticipant((theme, collector) => {
 	const linkFg = theme.getColor(textLinkForeground);
 	if (linkFg) {
-		collector.addRule(`.markers-panel .markers-panel-container .tree-container .monaco-tl-contents .details-container a.code-link span:hover { color: ${linkFg}; }`);
+		collector.addRule(`.markers-panel .markers-panel-container .tree-container .monaco-tl-contents .details-container a.code-link .marker-code > span:hover { color: ${linkFg}; }`);
+		collector.addRule(`.markers-panel .markers-panel-container .tree-container .monaco-list:focus .monaco-tl-contents .details-container a.code-link .marker-code > span:hover { color: ${linkFg.lighten(.4)}; }`);
 	}
 });
