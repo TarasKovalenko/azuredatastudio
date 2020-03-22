@@ -24,6 +24,7 @@ export const azureResourceGroupsCommand = 'azure.accounts.getResourceGroups';
 // Tasks, commands
 //
 export const mlManageLanguagesCommand = 'mls.command.manageLanguages';
+export const mlsPredictModelCommand = 'mls.command.predictModel';
 export const mlManageModelsCommand = 'mls.command.manageModels';
 export const mlRegisterModelCommand = 'mls.command.registerModel';
 export const mlManagePackagesCommand = 'mls.command.managePackages';
@@ -49,6 +50,9 @@ export function taskFailedError(taskName: string, err: string): string { return 
 export const installDependenciesMsgTaskName = localize('mls.installDependencies.msgTaskName', "Installing Machine Learning extension dependencies");
 export const noResultError = localize('mls.noResultError', "No Result returned");
 export const requiredPackagesNotInstalled = localize('mls.requiredPackagesNotInstalled', "The required dependencies are not installed");
+export const confirmEnableExternalScripts = localize('mls.confirmEnableExternalScripts', "External script is required for package management. Are you sure you want to enable that.");
+export const enableExternalScriptsError = localize('mls.enableExternalScriptsError', "Failed to enable External script.");
+export const externalScriptsIsRequiredError = localize('mls.externalScriptsIsRequiredError', "External script configuration is required for this action.");
 export function confirmInstallPythonPackages(packages: string): string {
 	return localize('mls.installDependencies.confirmInstallPythonPackages'
 		, "The following Python packages are required to install: {0}. Are you sure you want to install?", packages);
@@ -60,7 +64,6 @@ export const packageManagerNoConnection = localize('mls.packageManager.NoConnect
 export const notebookExtensionNotLoaded = localize('mls.notebookExtensionNotLoaded', "Notebook extension is not loaded");
 export const mssqlExtensionNotLoaded = localize('mls.mssqlExtensionNotLoaded', "MSSQL extension is not loaded");
 export const mlsEnabledMessage = localize('mls.enabledMessage', "Machine Learning Services Enabled");
-export const mlsDisabledMessage = localize('mls.disabledMessage', "Machine Learning Services Disabled");
 export const mlsConfigUpdateFailed = localize('mls.configUpdateFailed', "Failed to modify Machine Learning Services configurations");
 export const mlsEnableButtonTitle = localize('mls.enableButtonTitle', "Enable");
 export const mlsDisableButtonTitle = localize('mls.disableButtonTitle', "Disable");
@@ -91,7 +94,7 @@ export const extLangLanguagePlatform = localize('extLang.languagePlatform', "Pla
 export const deleteTitle = localize('extLang.delete', "Delete");
 export const extLangInstallButtonText = localize('extLang.installButtonText', "Install");
 export const extLangCancelButtonText = localize('extLang.CancelButtonText', "Cancel");
-export const extLangDoneButtonText = localize('extLang.DoneButtonText', "Done");
+export const extLangDoneButtonText = localize('extLang.DoneButtonText', "Close");
 export const extLangOkButtonText = localize('extLang.OkButtonText', "OK");
 export const extLangSaveButtonText = localize('extLang.SaveButtonText', "Save");
 export const extLangLanguageName = localize('extLang.languageName', "Name");
@@ -116,6 +119,12 @@ export const modelCreated = localize('models.created', "Date Created");
 export const modelVersion = localize('models.version', "Version");
 export const browseModels = localize('models.browseButton', "...");
 export const azureAccount = localize('models.azureAccount', "Azure account");
+export const columnDatabase = localize('predict.columnDatabase', "Database");
+export const columnTable = localize('predict.columnTable', "Table");
+export const inputColumns = localize('predict.inputColumns', "Input columns");
+export const outputColumns = localize('predict.outputColumns', "Output column");
+export const columnName = localize('predict.columnName', "Name");
+export const inputName = localize('predict.inputName', "Input Name");
 export const azureSubscription = localize('models.azureSubscription', "Azure subscription");
 export const azureGroup = localize('models.azureGroup', "Azure resource group");
 export const azureModelWorkspace = localize('models.azureModelWorkspace', "Azure ML workspace");
@@ -124,19 +133,27 @@ export const azureModels = localize('models.azureModels', "Models");
 export const azureModelsTitle = localize('models.azureModelsTitle', "Azure models");
 export const localModelsTitle = localize('models.localModelsTitle', "Local models");
 export const modelSourcesTitle = localize('models.modelSourcesTitle', "Source location");
-export const modelSourcePageTitle = localize('models.modelSourcePageTitle', "Ender model source details");
+export const modelSourcePageTitle = localize('models.modelSourcePageTitle', "Enter model source details");
+export const columnSelectionPageTitle = localize('models.columnSelectionPageTitle', "Select input columns");
 export const modelDetailsPageTitle = localize('models.modelDetailsPageTitle', "Provide model details");
 export const modelLocalSourceTitle = localize('models.modelLocalSourceTitle', "Source file");
 export const currentModelsTitle = localize('models.currentModelsTitle', "Models");
-export const azureRegisterModel = localize('models.azureRegisterModel', "Register");
-export const registerModelTitle = localize('models.RegisterWizard', "Register model");
+export const azureRegisterModel = localize('models.azureRegisterModel', "Deploy");
+export const predictModel = localize('models.predictModel', "Predict");
+export const registerModelTitle = localize('models.RegisterWizard', "Deployed models");
+export const deployModelTitle = localize('models.deployModelTitle', "Deploy models");
+export const makePredictionTitle = localize('models.makePredictionTitle', "Make prediction");
 export const modelRegisteredSuccessfully = localize('models.modelRegisteredSuccessfully', "Model registered successfully");
 export const modelFailedToRegister = localize('models.modelFailedToRegistered', "Model failed to register");
 export const localModelSource = localize('models.localModelSource', "Upload file");
 export const azureModelSource = localize('models.azureModelSource', "Import from AzureML registry");
+export const registeredModelsSource = localize('models.registeredModelsSource', "Select managed models");
 export const downloadModelMsgTaskName = localize('models.downloadModelMsgTaskName', "Downloading Model from Azure");
 export const invalidAzureResourceError = localize('models.invalidAzureResourceError', "Invalid Azure resource");
 export const invalidModelToRegisterError = localize('models.invalidModelToRegisterError', "Invalid model to register");
+export const invalidModelToPredictError = localize('models.invalidModelToPredictError', "Invalid model to predict");
+export const invalidModelToSelectError = localize('models.invalidModelToSelectError', "Please select a valid model");
+export const modelNameRequiredError = localize('models.modelNameRequiredError', "Model name is required.");
 export const updateModelFailedError = localize('models.updateModelFailedError', "Failed to update the model");
 export const importModelFailedError = localize('models.importModelFailedError', "Failed to register the model");
 
@@ -154,7 +171,7 @@ export const installMlsWindowsDocs = 'https://docs.microsoft.com/sql/advanced-an
 //
 export namespace cssStyles {
 	export const title = { 'font-size': '14px', 'font-weight': '600' };
-	export const tableHeader = { 'text-align': 'left', 'font-weight': 'bold', 'text-transform': 'uppercase', 'font-size': '10px', 'user-select': 'text', 'border': 'none', 'background-color': '#FFFFFF' };
+	export const tableHeader = { 'text-align': 'left', 'font-weight': 'bold', 'text-transform': 'uppercase', 'font-size': '10px', 'user-select': 'text', 'border': 'none' };
 	export const tableRow = { 'border-top': 'solid 1px #ccc', 'border-bottom': 'solid 1px #ccc', 'border-left': 'none', 'border-right': 'none' };
 	export const hyperlink = { 'user-select': 'text', 'color': '#0078d4', 'text-decoration': 'underline', 'cursor': 'pointer' };
 	export const text = { 'margin-block-start': '0px', 'margin-block-end': '0px' };
