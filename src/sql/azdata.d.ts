@@ -599,6 +599,7 @@ declare module 'azdata' {
 	// List Databases Request ----------------------------------------------------------------------
 	export interface ListDatabasesResult {
 		databaseNames: Array<string>;
+		databases?: Array<DatabaseInfo>;
 	}
 
 	/**
@@ -725,7 +726,7 @@ declare module 'azdata' {
 	export interface MetadataProvider extends DataProvider {
 		getMetadata(connectionUri: string): Thenable<ProviderMetadata>;
 
-		getDatabases(connectionUri: string): Thenable<string[]>;
+		getDatabases(connectionUri: string): Thenable<string[] | DatabaseInfo[]>;
 
 		getTableInfo(connectionUri: string, metadata: ObjectMetadata): Thenable<ColumnMetadata[]>;
 
@@ -2209,7 +2210,11 @@ declare module 'azdata' {
 
 	export enum AzureResource {
 		ResourceManagement = 0,
-		Sql = 1
+		Sql = 1,
+		OssRdbms = 2,
+		AzureKeyVault = 3,
+		Graph = 4,
+		MicrosoftResourceManagement = 5
 	}
 
 	export interface DidChangeAccountsParams {
@@ -2272,7 +2277,7 @@ declare module 'azdata' {
 		 * @param resource The resource to get the token for
 		 * @return Promise to return a security token object
 		 */
-		getSecurityToken(account: Account, resource: AzureResource): Thenable<{}>;
+		getSecurityToken(account: Account, resource: AzureResource): Thenable<{} | undefined>;
 
 		/**
 		 * Prompts the user to enter account information.
@@ -4585,7 +4590,7 @@ declare module 'azdata' {
 			 * Starts the server. Some server types may not support or require this.
 			 * Should no-op if server is already started
 			 */
-			startServer(): Thenable<void>;
+			startServer(kernelSpec: IKernelSpec): Thenable<void>;
 
 			/**
 			 * Stops the server. Some server types may not support or require this
@@ -4675,6 +4680,9 @@ declare module 'azdata' {
 
 		export interface ICellOutput {
 			output_type: OutputTypeName;
+			metadata?: {
+				azdata_chartOptions?: any;
+			}
 		}
 
 		/**

@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { URI, UriComponents } from 'vs/base/common/uri';
-import { /*ViewletRegistry, Extensions as ViewletExtensions,*/ ShowViewletAction } from 'vs/workbench/browser/viewlet';
+import { ShowViewletAction } from 'vs/workbench/browser/viewlet';
 import * as nls from 'vs/nls';
 import { sep } from 'vs/base/common/path';
 import { SyncActionDescriptor, MenuId, MenuRegistry } from 'vs/platform/actions/common/actions';
@@ -75,9 +75,6 @@ class FileUriLabelContribution implements IWorkbenchContribution {
 
 registerSingleton(IExplorerService, ExplorerService, true);
 
-// {{SQL CARBON EDIT}}
-// Registry.as<ViewletRegistry>(ViewletExtensions.Viewlets).setDefaultViewletId(VIEWLET_ID);
-
 const openViewletKb: IKeybindings = {
 	primary: KeyMod.CtrlCmd | KeyMod.Shift | KeyCode.KEY_E
 };
@@ -85,7 +82,7 @@ const openViewletKb: IKeybindings = {
 // Register Action to Open Viewlet
 const registry = Registry.as<IWorkbenchActionRegistry>(ActionExtensions.WorkbenchActions);
 registry.registerWorkbenchAction(
-	SyncActionDescriptor.create(OpenExplorerViewletAction, OpenExplorerViewletAction.ID, OpenExplorerViewletAction.LABEL, openViewletKb),
+	SyncActionDescriptor.from(OpenExplorerViewletAction, openViewletKb),
 	'View: Show Explorer',
 	nls.localize('view', "View")
 );
@@ -180,9 +177,9 @@ const hotExitConfiguration: IConfigurationPropertySchema = platform.isNative ?
 		'enum': [HotExitConfiguration.OFF, HotExitConfiguration.ON_EXIT, HotExitConfiguration.ON_EXIT_AND_WINDOW_CLOSE],
 		'default': HotExitConfiguration.ON_EXIT,
 		'markdownEnumDescriptions': [
-			nls.localize('hotExit.off', 'Disable hot exit.'),
-			nls.localize('hotExit.onExit', 'Hot exit will be triggered when the last window is closed on Windows/Linux or when the `workbench.action.quit` command is triggered (command palette, keybinding, menu). All windows with backups will be restored upon next launch.'),
-			nls.localize('hotExit.onExitAndWindowClose', 'Hot exit will be triggered when the last window is closed on Windows/Linux or when the `workbench.action.quit` command is triggered (command palette, keybinding, menu), and also for any window with a folder opened regardless of whether it\'s the last window. All windows without folders opened will be restored upon next launch. To restore folder windows as they were before shutdown set `#window.restoreWindows#` to `all`.')
+			nls.localize('hotExit.off', 'Disable hot exit. A prompt will show when attempting to close a window with dirty files.'),
+			nls.localize('hotExit.onExit', 'Hot exit will be triggered when the last window is closed on Windows/Linux or when the `workbench.action.quit` command is triggered (command palette, keybinding, menu). All windows without folders opened will be restored upon next launch. A list of workspaces with unsaved files can be accessed via `File > Open Recent > More...`'),
+			nls.localize('hotExit.onExitAndWindowClose', 'Hot exit will be triggered when the last window is closed on Windows/Linux or when the `workbench.action.quit` command is triggered (command palette, keybinding, menu), and also for any window with a folder opened regardless of whether it\'s the last window. All windows without folders opened will be restored upon next launch. A list of workspaces with unsaved files can be accessed via `File > Open Recent > More...`')
 		],
 		'description': nls.localize('hotExit', "Controls whether unsaved files are remembered between sessions, allowing the save prompt when exiting the editor to be skipped.", HotExitConfiguration.ON_EXIT, HotExitConfiguration.ON_EXIT_AND_WINDOW_CLOSE)
 	} : {
@@ -191,7 +188,7 @@ const hotExitConfiguration: IConfigurationPropertySchema = platform.isNative ?
 		'enum': [HotExitConfiguration.OFF, HotExitConfiguration.ON_EXIT_AND_WINDOW_CLOSE],
 		'default': HotExitConfiguration.ON_EXIT_AND_WINDOW_CLOSE,
 		'markdownEnumDescriptions': [
-			nls.localize('hotExit.off', 'Disable hot exit.'),
+			nls.localize('hotExit.off', 'Disable hot exit. A prompt will show when attempting to close a window with dirty files.'),
 			nls.localize('hotExit.onExitAndWindowCloseBrowser', 'Hot exit will be triggered when the browser quits or the window or tab is closed.')
 		],
 		'description': nls.localize('hotExit', "Controls whether unsaved files are remembered between sessions, allowing the save prompt when exiting the editor to be skipped.", HotExitConfiguration.ON_EXIT, HotExitConfiguration.ON_EXIT_AND_WINDOW_CLOSE)
@@ -205,7 +202,7 @@ configurationRegistry.registerConfiguration({
 	'properties': {
 		[FILES_EXCLUDE_CONFIG]: {
 			'type': 'object',
-			'markdownDescription': nls.localize('exclude', "Configure glob patterns for excluding files and folders. For example, the files explorer decides which files and folders to show or hide based on this setting. Refer to the `#search.exclude#` setting to define search specific excludes. Read more about glob patterns [here](https://code.visualstudio.com/docs/editor/codebasics#_advanced-search-options)."),
+			'markdownDescription': nls.localize('exclude', "Configure glob patterns for excluding files and folders. For example, the file Explorer decides which files and folders to show or hide based on this setting. Refer to the `#search.exclude#` setting to define search specific excludes. Read more about glob patterns [here](https://code.visualstudio.com/docs/editor/codebasics#_advanced-search-options)."),
 			'default': { '**/.git': true, '**/.svn': true, '**/.hg': true, '**/CVS': true, '**/.DS_Store': true },
 			'scope': ConfigurationScope.RESOURCE,
 			'additionalProperties': {
@@ -320,6 +317,11 @@ configurationRegistry.registerConfiguration({
 			'default': 4096,
 			'markdownDescription': nls.localize('maxMemoryForLargeFilesMB', "Controls the memory available to Azure Data Studio after restart when trying to open large files. Same effect as specifying `--max-memory=NEWSIZE` on the command line."), // {{SQL CARBON EDIT}} Change product name to ADS
 			included: platform.isNative
+		},
+		'files.restoreUndoStack': {
+			'type': 'boolean',
+			'description': nls.localize('files.restoreUndoStack', "Restore the undo stack when a file is reopened."),
+			'default': true
 		},
 		'files.saveConflictResolution': {
 			'type': 'string',

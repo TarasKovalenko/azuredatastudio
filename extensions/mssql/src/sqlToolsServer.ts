@@ -22,6 +22,7 @@ import { CompletionExtensionParams, CompletionExtLoadRequest } from './contracts
 import { promises as fs } from 'fs';
 import * as nls from 'vscode-nls';
 import { LanguageExtensionService } from './languageExtension/languageExtensionService';
+import { SqlAssessmentService } from './sqlAssessment/sqlAssessmentService';
 
 const localize = nls.loadMessageBundle();
 const outputChannel = vscode.window.createOutputChannel(Constants.serviceName);
@@ -71,9 +72,10 @@ export class SqlToolsServer {
 	}
 
 	private async download(context: AppContext): Promise<string> {
-		const rawConfig = await fs.readFile(path.join(context.extensionContext.extensionPath, 'config.json'));
+		const configDir = context.extensionContext.extensionPath;
+		const rawConfig = await fs.readFile(path.join(configDir, 'config.json'));
 		this.config = JSON.parse(rawConfig.toString());
-		this.config.installDirectory = path.join(__dirname, this.config.installDirectory);
+		this.config.installDirectory = path.join(configDir, this.config.installDirectory);
 		this.config.proxy = vscode.workspace.getConfiguration('http').get('proxy');
 		this.config.strictSSL = vscode.workspace.getConfiguration('http').get('proxyStrictSSL') || true;
 
@@ -156,7 +158,8 @@ function getClientOptions(context: AppContext): ClientOptions {
 			SchemaCompareService.asFeature(context),
 			LanguageExtensionService.asFeature(context),
 			DacFxService.asFeature(context),
-			CmsService.asFeature(context)
+			CmsService.asFeature(context),
+			SqlAssessmentService.asFeature(context)
 		],
 		outputChannel: new CustomOutputChannel()
 	};

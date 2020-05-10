@@ -174,7 +174,9 @@ export enum ModelComponentTypes {
 	Hyperlink,
 	Image,
 	RadioCardGroup,
-	Separator
+	TabbedPanel,
+	Separator,
+	PropertiesContainer
 }
 
 export enum ColumnSizingMode {
@@ -395,7 +397,9 @@ export enum AzureResource {
 	ResourceManagement = 0,
 	Sql = 1,
 	OssRdbms = 2,
-	AzureKeyVault = 3
+	AzureKeyVault = 3,
+	Graph = 4,
+	MicrosoftResourceManagement = 5
 }
 
 export class TreeItem extends vsExtTypes.TreeItem {
@@ -827,3 +831,25 @@ export type QueryEventType =
 	| 'queryStop'
 	| 'executionPlan'
 	| 'visualize';
+
+export enum TabOrientation {
+	Vertical = 'vertical',
+	Horizontal = 'horizontal'
+}
+
+export interface TabbedPanelLayout {
+	orientation: TabOrientation;
+	showIcon: boolean;
+	alwaysShowTabs: boolean;
+}
+
+export const enum SqlAssessmentTargetType {
+	Server = 1,
+	Database = 2
+}
+
+export const enum SqlAssessmentResultItemKind {
+	RealResult = 0,
+	Warning = 1,
+	Error = 2
+}

@@ -460,6 +460,13 @@ export class CodeEditorWidget extends Disposable implements editorBrowser.ICodeE
 		return this._modelData.viewModel.getVisibleRanges();
 	}
 
+	public getVisibleRangesPlusViewportAboveBelow(): Range[] {
+		if (!this._modelData) {
+			return [];
+		}
+		return this._modelData.viewModel.getVisibleRangesPlusViewportAboveBelow();
+	}
+
 	public getWhitespaces(): IEditorWhitespace[] {
 		if (!this._modelData) {
 			return [];
@@ -1797,7 +1804,7 @@ export class EditorModeContext extends Disposable {
 		this._hasDocumentSelectionFormattingProvider = EditorContextKeys.hasDocumentSelectionFormattingProvider.bindTo(_contextKeyService);
 		this._hasMultipleDocumentFormattingProvider = EditorContextKeys.hasMultipleDocumentFormattingProvider.bindTo(_contextKeyService);
 		this._hasMultipleDocumentSelectionFormattingProvider = EditorContextKeys.hasMultipleDocumentSelectionFormattingProvider.bindTo(_contextKeyService);
-		this._isInWalkThrough = EditorContextKeys.isInEmbeddedEditor.bindTo(_contextKeyService);
+		this._isInWalkThrough = EditorContextKeys.isInWalkThroughSnippet.bindTo(_contextKeyService);
 
 		const update = () => this._update();
 

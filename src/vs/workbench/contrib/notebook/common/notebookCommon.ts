@@ -8,11 +8,13 @@ import * as glob from 'vs/base/common/glob';
 import { IDisposable } from 'vs/base/common/lifecycle';
 import { isWindows } from 'vs/base/common/platform';
 import { ISplice } from 'vs/base/common/sequence';
-import { URI } from 'vs/base/common/uri';
+import { URI, UriComponents } from 'vs/base/common/uri';
 import * as editorCommon from 'vs/editor/common/editorCommon';
-import { PieceTreeTextBufferFactory } from 'vs/editor/common/model/pieceTreeTextBuffer/pieceTreeTextBufferBuilder';
 import { ExtensionIdentifier } from 'vs/platform/extensions/common/extensions';
 import { RawContextKey } from 'vs/platform/contextkey/common/contextkey';
+import { IEditorModel } from 'vs/platform/editor/common/editor';
+import { NotebookTextModel } from 'vs/workbench/contrib/notebook/common/model/notebookTextModel';
+import { GlobPattern } from 'vs/workbench/api/common/extHost.protocol';
 
 export enum CellKind {
 	Markdown = 1,
@@ -36,12 +38,47 @@ export const NOTEBOOK_DISPLAY_ORDER = [
 	'text/plain'
 ];
 
+export const ACCESSIBLE_NOTEBOOK_DISPLAY_ORDER = [
+	'text/markdown',
+	'application/json',
+	'text/plain',
+	'text/html',
+	'image/svg+xml',
+	'image/png',
+	'image/jpeg',
+];
+
+export const notebookDocumentMetadataDefaults: Required<NotebookDocumentMetadata> = {
+	editable: true,
+	runnable: true,
+	cellEditable: true,
+	cellRunnable: true,
+	hasExecutionOrder: true,
+	displayOrder: NOTEBOOK_DISPLAY_ORDER
+};
+
 export interface NotebookDocumentMetadata {
 	editable: boolean;
+	runnable: boolean;
+	cellEditable: boolean;
+	cellRunnable: boolean;
+	hasExecutionOrder: boolean;
+	displayOrder?: GlobPattern[];
+}
+
+export enum NotebookCellRunState {
+	Running = 1,
+	Idle = 2,
+	Success = 3,
+	Error = 4
 }
 
 export interface NotebookCellMetadata {
-	editable: boolean;
+	editable?: boolean;
+	runnable?: boolean;
+	executionOrder?: number;
+	statusMessage?: string;
+	runState?: NotebookCellRunState;
 }
 
 export interface INotebookDisplayOrder {
@@ -126,15 +163,13 @@ export type IOutput = ITransformedDisplayOutputDto | IStreamOutput | IErrorOutpu
 export interface ICell {
 	readonly uri: URI;
 	handle: number;
-	source: string[];
 	language: string;
 	cellKind: CellKind;
 	outputs: IOutput[];
 	metadata?: NotebookCellMetadata;
 	onDidChangeOutputs?: Event<NotebookCellOutputsSplice[]>;
-	resolveTextBufferFactory(): PieceTreeTextBufferFactory;
-	// TODO@rebornix it should be later on replaced by moving textmodel resolution into CellTextModel
-	contentChange(): void;
+	onDidChangeLanguage: Event<string>;
+	onDidChangeMetadata: Event<void>;
 }
 
 export interface LanguageInfo {
@@ -150,10 +185,11 @@ export interface INotebookTextModel {
 	viewType: string;
 	// metadata: IMetadata;
 	readonly uri: URI;
+	readonly versionId: number;
 	languages: string[];
 	cells: ICell[];
 	renderers: Set<number>;
-	onDidChangeCells?: Event<NotebookCellsSplice[]>;
+	onDidChangeCells?: Event<NotebookCellTextModelSplice[]>;
 	onDidChangeContent: Event<void>;
 	onWillDispose(listener: () => void): IDisposable;
 }
@@ -163,9 +199,9 @@ export interface IRenderOutput {
 	hasDynamicHeight: boolean;
 }
 
-export type NotebookCellsSplice = [
+export type NotebookCellTextModelSplice = [
 	number /* start */,
-	number /* delete count */,
+	number,
 	ICell[]
 ];
 
@@ -175,12 +211,109 @@ export type NotebookCellOutputsSplice = [
 	IOutput[]
 ];
 
+export interface IMainCellDto {
+	handle: number;
+	uri: UriComponents,
+	source: string[];
+	language: string;
+	cellKind: CellKind;
+	outputs: IOutput[];
+	metadata?: NotebookCellMetadata;
+}
+
+export type NotebookCellsSplice2 = [
+	number /* start */,
+	number /* delete count */,
+	IMainCellDto[]
+];
+
+export enum NotebookCellsChangeType {
+	ModelChange = 1,
+	Move = 2,
+	CellClearOutput = 3,
+	CellsClearOutput = 4,
+	ChangeLanguage = 5
+}
+
+export interface NotebookCellsModelChangedEvent {
+	readonly kind: NotebookCellsChangeType.ModelChange;
+	readonly changes: NotebookCellsSplice2[];
+	readonly versionId: number;
+}
+
+export interface NotebookCellsModelMoveEvent {
+	readonly kind: NotebookCellsChangeType.Move;
+	readonly index: number;
+	readonly newIdx: number;
+	readonly versionId: number;
+}
+
+export interface NotebookCellClearOutputEvent {
+	readonly kind: NotebookCellsChangeType.CellClearOutput;
+	readonly index: number;
+	readonly versionId: number;
+}
+
+export interface NotebookCellsClearOutputEvent {
+	readonly kind: NotebookCellsChangeType.CellsClearOutput;
+	readonly versionId: number;
+}
+
+export interface NotebookCellsChangeLanguageEvent {
+	readonly kind: NotebookCellsChangeType.ChangeLanguage;
+	readonly versionId: number;
+	readonly index: number;
+	readonly language: string;
+}
+
+export type NotebookCellsChangedEvent = NotebookCellsModelChangedEvent | NotebookCellsModelMoveEvent | NotebookCellClearOutputEvent | NotebookCellsClearOutputEvent | NotebookCellsChangeLanguageEvent;
+export enum CellEditType {
+	Insert = 1,
+	Delete = 2
+}
+
+export interface ICellDto2 {
+	source: string | string[];
+	language: string;
+	cellKind: CellKind;
+	outputs: IOutput[];
+	metadata?: NotebookCellMetadata;
+}
+
+export interface ICellInsertEdit {
+	editType: CellEditType.Insert;
+	index: number;
+	cells: ICellDto2[];
+}
+
+export interface ICellDeleteEdit {
+	editType: CellEditType.Delete;
+	index: number;
+	count: number;
+}
+
+export type ICellEditOperation = ICellInsertEdit | ICellDeleteEdit;
+
+export interface INotebookEditData {
+	documentVersionId: number;
+	edits: ICellEditOperation[];
+	renderers: number[];
+}
+
+export interface NotebookDataDto {
+	readonly cells: ICellDto2[];
+	readonly languages: string[];
+	readonly metadata: NotebookDocumentMetadata;
+}
+
+
 export namespace CellUri {
 
 	export const scheme = 'vscode-notebook';
 
 	export function generate(notebook: URI, handle: number): URI {
 		return notebook.with({
+			path: `${notebook.path}, cell ${handle + 1}`,
 			query: JSON.stringify({ cell: handle, notebook: notebook.toString() }),
 			scheme,
 		});
@@ -199,6 +332,10 @@ export namespace CellUri {
 		} catch {
 			return undefined;
 		}
+	}
+
+	export function equal(a: URI, b: URI): boolean {
+		return a.path === b.path && a.query === b.query && a.scheme === b.scheme;
 	}
 }
 
@@ -335,3 +472,10 @@ export interface ICellEditorViewState {
 }
 
 export const NOTEBOOK_EDITOR_CURSOR_BOUNDARY = new RawContextKey<'none' | 'top' | 'bottom' | 'both'>('notebookEditorCursorAtBoundary', 'none');
+
+
+export interface INotebookEditorModel extends IEditorModel {
+	notebook: NotebookTextModel;
+	isDirty(): boolean;
+	save(): Promise<boolean>;
+}

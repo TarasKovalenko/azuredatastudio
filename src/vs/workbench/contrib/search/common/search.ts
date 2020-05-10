@@ -77,7 +77,9 @@ export interface IWorkbenchSearchConfigurationProperties extends ISearchConfigur
 	quickOpen: {
 		includeSymbols: boolean;
 		includeHistory: boolean;
-		workspaceSymbolsFilter: 'default' | 'reduced' | 'all';
+		history: {
+			filterSortOrder: 'default' | 'recency'
+		}
 	};
 }
 
@@ -101,15 +103,15 @@ export function getOutOfWorkspaceEditorResources(accessor: ServicesAccessor): UR
 }
 
 // Supports patterns of <path><#|:|(><line><#|:|,><col?>
-const LINE_COLON_PATTERN = /\s?[#:\(](\d*)([#:,](\d*))?\)?\s*$/;
+const LINE_COLON_PATTERN = /\s?[#:\(](?:line )?(\d*)(?:[#:,](\d*))?\)?\s*$/;
 
 export interface IFilterAndRange {
 	filter: string;
 	range: IRange;
 }
 
-export function extractRangeFromFilter(filter: string): IFilterAndRange | undefined {
-	if (!filter) {
+export function extractRangeFromFilter(filter: string, unless?: string[]): IFilterAndRange | undefined {
+	if (!filter || unless?.some(value => filter.indexOf(value) !== -1)) {
 		return undefined;
 	}
 
@@ -117,8 +119,9 @@ export function extractRangeFromFilter(filter: string): IFilterAndRange | undefi
 
 	// Find Line/Column number from search value using RegExp
 	const patternMatch = LINE_COLON_PATTERN.exec(filter);
-	if (patternMatch && patternMatch.length > 1) {
-		const startLineNumber = parseInt(patternMatch[1], 10);
+
+	if (patternMatch) {
+		const startLineNumber = parseInt(patternMatch[1] ?? '', 10);
 
 		// Line Number
 		if (isNumber(startLineNumber)) {
@@ -130,16 +133,14 @@ export function extractRangeFromFilter(filter: string): IFilterAndRange | undefi
 			};
 
 			// Column Number
-			if (patternMatch.length > 3) {
-				const startColumn = parseInt(patternMatch[3], 10);
-				if (isNumber(startColumn)) {
-					range = {
-						startLineNumber: range.startLineNumber,
-						startColumn: startColumn,
-						endLineNumber: range.endLineNumber,
-						endColumn: startColumn
-					};
-				}
+			const startColumn = parseInt(patternMatch[2] ?? '', 10);
+			if (isNumber(startColumn)) {
+				range = {
+					startLineNumber: range.startLineNumber,
+					startColumn: startColumn,
+					endLineNumber: range.endLineNumber,
+					endColumn: startColumn
+				};
 			}
 		}
 

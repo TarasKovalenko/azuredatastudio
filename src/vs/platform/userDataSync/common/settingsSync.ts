@@ -4,23 +4,21 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { IFileService, FileOperationError, FileOperationResult } from 'vs/platform/files/common/files';
-import { UserDataSyncError, UserDataSyncErrorCode, SyncStatus, IUserDataSyncStoreService, IUserDataSyncLogService, IUserDataSyncUtilService, CONFIGURATION_SYNC_STORE_KEY, SyncResource, IUserDataSyncEnablementService, IUserDataSyncBackupStoreService, USER_DATA_SYNC_SCHEME, PREVIEW_DIR_NAME } from 'vs/platform/userDataSync/common/userDataSync';
+import { UserDataSyncError, UserDataSyncErrorCode, SyncStatus, IUserDataSyncStoreService, IUserDataSyncLogService, IUserDataSyncUtilService, CONFIGURATION_SYNC_STORE_KEY, SyncResource, IUserDataSyncEnablementService, IUserDataSyncBackupStoreService, USER_DATA_SYNC_SCHEME, PREVIEW_DIR_NAME, ISyncResourceHandle } from 'vs/platform/userDataSync/common/userDataSync';
 import { VSBuffer } from 'vs/base/common/buffer';
-import { parse } from 'vs/base/common/json';
 import { localize } from 'vs/nls';
 import { Event } from 'vs/base/common/event';
 import { createCancelablePromise } from 'vs/base/common/async';
 import { IEnvironmentService } from 'vs/platform/environment/common/environment';
 import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
 import { CancellationToken } from 'vs/base/common/cancellation';
-import { updateIgnoredSettings, merge, getIgnoredSettings } from 'vs/platform/userDataSync/common/settingsMerge';
-import { isEmptyObject } from 'vs/base/common/types';
+import { updateIgnoredSettings, merge, getIgnoredSettings, isEmpty } from 'vs/platform/userDataSync/common/settingsMerge';
 import { edit } from 'vs/platform/userDataSync/common/content';
 import { IFileSyncPreviewResult, AbstractJsonFileSynchroniser, IRemoteUserData } from 'vs/platform/userDataSync/common/abstractSynchronizer';
 import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
 import { URI } from 'vs/base/common/uri';
 import { IExtensionManagementService } from 'vs/platform/extensionManagement/common/extensionManagement';
-import { joinPath, isEqual } from 'vs/base/common/resources';
+import { joinPath, isEqual, dirname, basename } from 'vs/base/common/resources';
 
 export interface ISettingsSyncContent {
 	settings: string;
@@ -160,10 +158,7 @@ export class SettingsSynchroniser extends AbstractJsonFileSynchroniser {
 			if (localFileContent) {
 				const formatUtils = await this.getFormattingOptions();
 				const content = edit(localFileContent.value.toString(), [CONFIGURATION_SYNC_STORE_KEY], undefined, formatUtils);
-				const settings = parse(content);
-				if (!isEmptyObject(settings)) {
-					return true;
-				}
+				return !isEmpty(content);
 			}
 		} catch (error) {
 			if ((<FileOperationError>error).fileOperationResult !== FileOperationResult.FILE_NOT_FOUND) {
@@ -173,7 +168,35 @@ export class SettingsSynchroniser extends AbstractJsonFileSynchroniser {
 		return false;
 	}
 
-	async getConflictContent(conflictResource: URI): Promise<string | null> {
+	async getAssociatedResources({ uri }: ISyncResourceHandle): Promise<{ resource: URI, comparableResource?: URI }[]> {
+		return [{ resource: joinPath(uri, 'settings.json'), comparableResource: this.file }];
+	}
+
+	async resolveContent(uri: URI): Promise<string | null> {
+		if (isEqual(this.remotePreviewResource, uri)) {
+			return this.getConflictContent(uri);
+		}
+		let content = await super.resolveContent(uri);
+		if (content) {
+			return content;
+		}
+		content = await super.resolveContent(dirname(uri));
+		if (content) {
+			const syncData = this.parseSyncData(content);
+			if (syncData) {
+				const settingsSyncContent = this.parseSettingsSyncContent(syncData.content);
+				if (settingsSyncContent) {
+					switch (basename(uri)) {
+						case 'settings.json':
+							return settingsSyncContent.settings;
+					}
+				}
+			}
+		}
+		return null;
+	}
+
+	protected async getConflictContent(conflictResource: URI): Promise<string | null> {
 		let content = await super.getConflictContent(conflictResource);
 		if (content !== null) {
 			const settingsSyncContent = this.parseSettingsSyncContent(content);
@@ -186,36 +209,6 @@ export class SettingsSynchroniser extends AbstractJsonFileSynchroniser {
 			content = updateIgnoredSettings(content, '{}', ignoredSettings, formatUtils);
 		}
 		return content;
-	}
-
-	async getRemoteContent(ref?: string, fragment?: string): Promise<string | null> {
-		let content = await super.getRemoteContent(ref);
-		if (content !== null && fragment) {
-			return this.getFragment(content, fragment);
-		}
-		return content;
-	}
-
-	async getLocalBackupContent(ref?: string, fragment?: string): Promise<string | null> {
-		let content = await super.getLocalBackupContent(ref);
-		if (content !== null && fragment) {
-			return this.getFragment(content, fragment);
-		}
-		return content;
-	}
-
-	private getFragment(content: string, fragment: string): string | null {
-		const syncData = this.parseSyncData(content);
-		if (syncData) {
-			const settingsSyncContent = this.parseSettingsSyncContent(syncData.content);
-			if (settingsSyncContent) {
-				switch (fragment) {
-					case 'settings':
-						return settingsSyncContent.settings;
-				}
-			}
-		}
-		return null;
 	}
 
 	async acceptConflict(conflict: URI, content: string): Promise<void> {
@@ -311,14 +304,14 @@ export class SettingsSynchroniser extends AbstractJsonFileSynchroniser {
 		this.syncPreviewResultPromise = null;
 	}
 
-	private getPreview(remoteUserData: IRemoteUserData, lastSyncUserData: IRemoteUserData | null, resolvedConflicts: { key: string, value: any }[]): Promise<IFileSyncPreviewResult> {
+	private getPreview(remoteUserData: IRemoteUserData, lastSyncUserData: IRemoteUserData | null, resolvedConflicts: { key: string, value: any }[] = []): Promise<IFileSyncPreviewResult> {
 		if (!this.syncPreviewResultPromise) {
 			this.syncPreviewResultPromise = createCancelablePromise(token => this.generatePreview(remoteUserData, lastSyncUserData, resolvedConflicts, token));
 		}
 		return this.syncPreviewResultPromise;
 	}
 
-	protected async generatePreview(remoteUserData: IRemoteUserData, lastSyncUserData: IRemoteUserData | null, resolvedConflicts: { key: string, value: any }[], token: CancellationToken): Promise<IFileSyncPreviewResult> {
+	protected async generatePreview(remoteUserData: IRemoteUserData, lastSyncUserData: IRemoteUserData | null, resolvedConflicts: { key: string, value: any }[] = [], token: CancellationToken = CancellationToken.None): Promise<IFileSyncPreviewResult> {
 		const fileContent = await this.getLocalFileContent();
 		const formattingOptions = await this.getFormattingOptions();
 		const remoteSettingsSyncContent = this.getSettingsSyncContent(remoteUserData);

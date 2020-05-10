@@ -39,6 +39,25 @@ if (args['nogpu']) { // {{SQL CARBON EDIT}}
 const userDataPath = getUserDataPath(args);
 app.setPath('userData', userDataPath);
 
+// Set temp directory based on crash-reporter-directory CLI argument
+// The crash reporter will store crashes in temp folder so we need
+// to change that location accordingly.
+let crashReporterDirectory = args['crash-reporter-directory'];
+if (crashReporterDirectory) {
+	crashReporterDirectory = path.normalize(crashReporterDirectory);
+
+	if (!fs.existsSync(crashReporterDirectory)) {
+		try {
+			fs.mkdirSync(crashReporterDirectory);
+		} catch (error) {
+			console.error(`The path '${crashReporterDirectory}' specified for --crash-reporter-directory does not seem to exist or cannot be created.`);
+			app.exit(1);
+		}
+	}
+	console.log(`Found --crash-reporter-directory argument. Setting temp directory to be '${crashReporterDirectory}'`);
+	app.setPath('temp', crashReporterDirectory);
+}
+
 // Set logs path before app 'ready' event if running portable
 // to ensure that no 'logs' folder is created on disk at a
 // location outside of the portable directory
@@ -63,6 +82,12 @@ const nodeCachedDataDir = getNodeCachedDir();
 
 // Configure static command line arguments
 const argvConfig = configureCommandlineSwitchesSync(args);
+
+// Remove env set by snap https://github.com/microsoft/vscode/issues/85344
+if (process.env['SNAP']) {
+	delete process.env['GDK_PIXBUF_MODULE_FILE'];
+	delete process.env['GDK_PIXBUF_MODULEDIR'];
+}
 
 /**
  * Support user defined locale: load it early before app('ready')
@@ -323,14 +348,15 @@ function getUserDataPath(cliArgs) {
  * @returns {ParsedArgs}
  */
 function parseCLIArgs() {
-	const minimist = require('vscode-minimist');
+	const minimist = require('minimist');
 
 	return minimist(process.argv, {
 		string: [
 			'user-data-dir',
 			'locale',
 			'js-flags',
-			'max-memory'
+			'max-memory',
+			'crash-reporter-directory'
 		]
 	});
 }

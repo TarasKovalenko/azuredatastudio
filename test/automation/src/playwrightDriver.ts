@@ -92,7 +92,7 @@ let server: ChildProcess | undefined;
 let endpoint: string | undefined;
 let workspacePath: string | undefined;
 
-export async function launch(userDataDir: string, _workspacePath: string, codeServerPath = process.env.VSCODE_REMOTE_SERVER_PATH): Promise<void> {
+export async function launch(userDataDir: string, _workspacePath: string, extensionsDir: string, codeServerPath = process.env.VSCODE_REMOTE_SERVER_PATH): Promise<void> {
 	workspacePath = _workspacePath;
 
 	const agentFolder = userDataDir;
@@ -110,7 +110,7 @@ export async function launch(userDataDir: string, _workspacePath: string, codeSe
 	}
 	server = spawn(
 		serverLocation,
-		['--browser', 'none', '--driver', 'web'],
+		['--browser', 'none', '--driver', 'web', '--extensions-dir', `${extensionsDir}`],
 		{ env }
 	);
 	server.stderr?.on('data', error => console.log(`Server stderr: ${error}`));
@@ -141,7 +141,7 @@ function waitForEndpoint(): Promise<string> {
 
 export function connect(browserType: 'chromium' | 'webkit' | 'firefox' = 'chromium'): Promise<{ client: IDisposable, driver: IDriver }> {
 	return new Promise(async (c) => {
-		const browser = await playwright[browserType].launch({ headless: false, dumpio: true });
+		const browser = await playwright[browserType].launch({ headless: false });
 		const context = await browser.newContext();
 		const page = await context.newPage();
 		await page.setViewportSize({ width, height });

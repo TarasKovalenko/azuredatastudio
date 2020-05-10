@@ -5,7 +5,6 @@
 
 import { localize } from 'vs/nls';
 import { Event, Emitter } from 'vs/base/common/event';
-import { assign } from 'vs/base/common/objects';
 import { withNullAsUndefined, assertIsDefined } from 'vs/base/common/types';
 import { URI } from 'vs/base/common/uri';
 import { IDisposable, Disposable, toDisposable } from 'vs/base/common/lifecycle';
@@ -33,8 +32,10 @@ import { IFilesConfigurationService, AutoSaveMode } from 'vs/workbench/services/
 export const DirtyWorkingCopiesContext = new RawContextKey<boolean>('dirtyWorkingCopies', false);
 export const ActiveEditorContext = new RawContextKey<string | null>('activeEditor', null);
 export const ActiveEditorIsReadonlyContext = new RawContextKey<boolean>('activeEditorIsReadonly', false);
+export const ActiveEditorAvailableEditorIdsContext = new RawContextKey<string>('activeEditorAvailableEditorIds', '');
 export const EditorsVisibleContext = new RawContextKey<boolean>('editorIsOpen', false);
 export const EditorPinnedContext = new RawContextKey<boolean>('editorPinned', false);
+export const EditorStickyContext = new RawContextKey<boolean>('editorSticky', false);
 export const EditorGroupActiveEditorDirtyContext = new RawContextKey<boolean>('groupActiveEditorDirty', false);
 export const EditorGroupEditorsCountContext = new RawContextKey<number>('groupEditorsCount', 0);
 export const NoEditorsVisibleContext = EditorsVisibleContext.toNegated();
@@ -69,6 +70,11 @@ export interface IEditorPane extends IComposite {
 	 * The assigned input of this editor.
 	 */
 	readonly input: IEditorInput | undefined;
+
+	/**
+	 * The assigned options of the editor.
+	 */
+	readonly options: EditorOptions | undefined;
 
 	/**
 	 * The assigned group this editor is showing in.
@@ -168,6 +174,10 @@ export interface IFileEditorInputFactory {
 	isFileEditorInput(obj: unknown): obj is IFileEditorInput;
 }
 
+interface ICustomEditorInputFactory {
+	createCustomEditorInput(resource: URI, instantiationService: IInstantiationService): Promise<IEditorInput>;
+}
+
 export interface IEditorInputFactoryRegistry {
 
 	/**
@@ -179,6 +189,16 @@ export interface IEditorInputFactoryRegistry {
 	 * Returns the file editor input factory to use for file inputs.
 	 */
 	getFileEditorInputFactory(): IFileEditorInputFactory;
+
+	/**
+	 * Registers the custom editor input factory to use for custom inputs.
+	 */
+	registerCustomEditorInputFactory(factory: ICustomEditorInputFactory): void;
+
+	/**
+	 * Returns the custom editor input factory to use for custom inputs.
+	 */
+	getCustomEditorInputFactory(): ICustomEditorInputFactory;
 
 	/**
 	 * Registers a editor input factory for the given editor input to the registry. An editor input factory
@@ -876,7 +896,7 @@ export class SideBySideEditorInput extends EditorInput {
 	getTelemetryDescriptor(): { [key: string]: unknown } {
 		const descriptor = this.master.getTelemetryDescriptor();
 
-		return assign(descriptor, super.getTelemetryDescriptor());
+		return Object.assign(descriptor, super.getTelemetryDescriptor());
 	}
 
 	private registerListeners(): void {
@@ -1028,6 +1048,12 @@ export class EditorOptions implements IEditorOptions {
 	pinned: boolean | undefined;
 
 	/**
+	 * An editor that is sticky moves to the beginning of the editors list within the group and will remain
+	 * there unless explicitly closed. Operations such as "Close All" will not close sticky editors.
+	 */
+	sticky: boolean | undefined;
+
+	/**
 	 * The index in the document stack where to insert the editor into when opening.
 	 */
 	index: number | undefined;
@@ -1090,6 +1116,10 @@ export class EditorOptions implements IEditorOptions {
 
 		if (typeof options.pinned === 'boolean') {
 			this.pinned = options.pinned;
+		}
+
+		if (typeof options.sticky === 'boolean') {
+			this.sticky = options.sticky;
 		}
 
 		if (typeof options.inactive === 'boolean') {
@@ -1272,6 +1302,7 @@ export class EditorCommandsContextActionRunner extends ActionRunner {
 export interface IEditorCloseEvent extends IEditorIdentifier {
 	replaced: boolean;
 	index: number;
+	sticky: boolean;
 }
 
 export type GroupIdentifier = number;
@@ -1285,9 +1316,11 @@ export interface IWorkbenchEditorConfiguration {
 
 interface IEditorPartConfiguration {
 	showTabs?: boolean;
+	scrollToSwitchTabs?: boolean;
 	highlightModifiedTabs?: boolean;
 	tabCloseButton?: 'left' | 'right' | 'off';
 	tabSizing?: 'fit' | 'shrink';
+	titleScrollbarSizing?: 'default' | 'large';
 	focusRecentEditorAfterClose?: boolean;
 	showIcons?: boolean;
 	enablePreview?: boolean;
@@ -1387,6 +1420,7 @@ export interface IEditorMemento<T> {
 class EditorInputFactoryRegistry implements IEditorInputFactoryRegistry {
 	private instantiationService: IInstantiationService | undefined;
 	private fileEditorInputFactory: IFileEditorInputFactory | undefined;
+	private customEditorInputFactory: ICustomEditorInputFactory | undefined;
 
 	private readonly editorInputFactoryConstructors: Map<string, IConstructorSignature0<IEditorInputFactory>> = new Map();
 	private readonly editorInputFactoryInstances: Map<string, IEditorInputFactory> = new Map();
@@ -1412,6 +1446,14 @@ class EditorInputFactoryRegistry implements IEditorInputFactoryRegistry {
 
 	getFileEditorInputFactory(): IFileEditorInputFactory {
 		return assertIsDefined(this.fileEditorInputFactory);
+	}
+
+	registerCustomEditorInputFactory(factory: ICustomEditorInputFactory): void {
+		this.customEditorInputFactory = factory;
+	}
+
+	getCustomEditorInputFactory(): ICustomEditorInputFactory {
+		return assertIsDefined(this.customEditorInputFactory);
 	}
 
 	registerEditorInputFactory(editorInputId: string, ctor: IConstructorSignature0<IEditorInputFactory>): IDisposable {
@@ -1447,10 +1489,13 @@ export async function pathsToEditors(paths: IPathData[] | undefined, fileService
 	const editors = await Promise.all(paths.map(async path => {
 		const resource = URI.revive(path.fileUri);
 		if (!resource || !fileService.canHandleResource(resource)) {
-			return undefined; // {{SQL CARBON EDIT}} @anthonydresser revert after strictnullchecks
+			return undefined; // {{SQL CARBON EDIT}} @anthonydresser strict-null-checks
 		}
 
 		const exists = (typeof path.exists === 'boolean') ? path.exists : await fileService.exists(resource);
+		if (!exists && path.openOnlyIfExists) {
+			return undefined; // {{SQL CARBON EDIT}} @anthonydresser strict-null-checks
+		}
 
 		const options: ITextEditorOptions = (exists && typeof path.lineNumber === 'number') ? {
 			selection: {

@@ -54,6 +54,10 @@ export class CustomTextEditorModel extends Disposable implements ICustomEditorMo
 		return this._model.object.isReadonly();
 	}
 
+	public get backupId() {
+		return undefined;
+	}
+
 	public isDirty(): boolean {
 		return this.textFileService.isDirty(this.resource);
 	}
@@ -68,11 +72,11 @@ export class CustomTextEditorModel extends Disposable implements ICustomEditorMo
 		return this.textFileService.revert(this.resource, options);
 	}
 
-	public async save(options?: ISaveOptions): Promise<boolean> {
-		return !!await this.textFileService.save(this.resource, options);
+	public saveCustomEditor(options?: ISaveOptions): Promise<URI | undefined> {
+		return this.textFileService.save(this.resource, options);
 	}
 
-	public async saveAs(resource: URI, targetResource: URI, options?: ISaveOptions): Promise<boolean> {
+	public async saveCustomEditorAs(resource: URI, targetResource: URI, options?: ISaveOptions): Promise<boolean> {
 		return !!await this.textFileService.saveAs(resource, targetResource, options);
 	}
 }
