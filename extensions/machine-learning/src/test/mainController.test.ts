@@ -91,7 +91,11 @@ function createContext(): TestContext {
 			globalStoragePath: '',
 			logPath: '',
 			extensionUri: vscode.Uri.parse(''),
-			environmentVariableCollection: { } as any
+			environmentVariableCollection: { } as any,
+			extensionMode: undefined as any,
+			globalStorageUri: vscode.Uri.parse('test://'),
+			logUri: vscode.Uri.parse('test://'),
+			storageUri: undefined
 		},
 		outputChannel: {
 			name: '',

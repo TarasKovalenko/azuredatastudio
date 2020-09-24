@@ -23,10 +23,10 @@ export interface IEnvironmentService {
 
 	// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 	// NOTE: DO NOT ADD ANY OTHER PROPERTY INTO THE COLLECTION HERE
-	// UNLESS THIS PROPERTY IS SUPPORTED BOTH IN WEB AND DESKTOP!!!!
+	// UNLESS THIS PROPERTY IS SUPPORTED BOTH IN WEB AND NATIVE!!!!
 	// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-	_serviceBrand: undefined;
+	readonly _serviceBrand: undefined;
 
 	// --- user roaming data
 	userRoamingDataHome: URI;
@@ -39,6 +39,9 @@ export interface IEnvironmentService {
 	// --- data paths
 	backupHome: URI;
 	untitledWorkspacesHome: URI;
+
+	globalStorageHome: URI;
+	workspaceStorageHome: URI;
 
 	// --- settings sync
 	userDataSyncLogResource: URI;
@@ -67,6 +70,6 @@ export interface IEnvironmentService {
 
 	// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 	// NOTE: DO NOT ADD ANY OTHER PROPERTY INTO THE COLLECTION HERE
-	// UNLESS THIS PROPERTY IS SUPPORTED BOTH IN WEB AND DESKTOP!!!!
+	// UNLESS THIS PROPERTY IS SUPPORTED BOTH IN WEB AND NATIVE!!!!
 	// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 }

@@ -12,7 +12,13 @@ import * as loc from '../../../localizedConstants';
 export class ControllerDashboard extends Dashboard {
 
 	constructor(private _controllerModel: ControllerModel) {
-		super(loc.arcControllerDashboard);
+		super(loc.arcControllerDashboard(_controllerModel.info.name));
+	}
+
+	public async showDashboard(): Promise<void> {
+		await super.showDashboard();
+		// Kick off the model refresh but don't wait on it since that's all handled with callbacks anyways
+		this._controllerModel.refresh(false).catch(err => console.log(`Error refreshing Controller dashboard ${err}`));
 	}
 
 	protected async registerTabs(modelView: azdata.ModelView): Promise<(azdata.DashboardTab | azdata.DashboardTabGroup)[]> {

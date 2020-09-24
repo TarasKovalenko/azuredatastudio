@@ -99,3 +99,24 @@ export async function shouldThrowSpecificError(block: Function, expectedMessage:
 		throw new AssertionError({ message: `Operation succeeded, but expected failure with exception: "${expectedMessage}".${details ? '  ' + details : ''}` });
 	}
 }
+
+export function setDacpacEndpointInfo(path: string): mssql.SchemaCompareEndpointInfo {
+	let endpointInfo: mssql.SchemaCompareEndpointInfo;
+
+	endpointInfo = { ...mockDacpacEndpoint };
+	endpointInfo.packageFilePath = path;
+
+	return endpointInfo;
+}
+
+export function setDatabaseEndpointInfo(): mssql.SchemaCompareEndpointInfo {
+	let endpointInfo: mssql.SchemaCompareEndpointInfo;
+	let dbName = 'My Database';
+	let serverName = 'My Server';
+
+	endpointInfo = { ...mockDatabaseEndpoint };
+	endpointInfo.databaseName = dbName;
+	endpointInfo.serverName = serverName;
+
+	return endpointInfo;
+}

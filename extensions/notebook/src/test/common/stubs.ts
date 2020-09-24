@@ -18,10 +18,14 @@ export class MockExtensionContext implements vscode.ExtensionContext {
 	}
 	storagePath: string;
 	globalStoragePath: string;
+	extensionMode: vscode.ExtensionMode;
 
 	constructor() {
 		this.subscriptions = [];
 	}
+	storageUri: vscode.Uri;
+	globalStorageUri: vscode.Uri;
+	logUri: vscode.Uri;
 	environmentVariableCollection: vscode.EnvironmentVariableCollection;
 }
 

@@ -33,9 +33,6 @@ export const enum WindowMode {
 
 export interface ICodeWindow extends IDisposable {
 
-	readonly onClose: Event<void>;
-	readonly onDestroy: Event<void>;
-
 	readonly whenClosedOrLoaded: Promise<void>;
 
 	readonly id: number;
@@ -64,7 +61,7 @@ export interface ICodeWindow extends IDisposable {
 	load(config: INativeWindowConfiguration, isReload?: boolean): void;
 	reload(configuration?: INativeWindowConfiguration, cli?: ParsedArgs): void;
 
-	focus(): void;
+	focus(options?: { force: boolean }): void;
 	close(): void;
 
 	getBounds(): Rectangle;
@@ -99,7 +96,7 @@ export interface IWindowsCountChangedEvent {
 
 export interface IWindowsMainService {
 
-	_serviceBrand: undefined;
+	readonly _serviceBrand: undefined;
 
 	readonly onWindowReady: Event<ICodeWindow>;
 	readonly onWindowsCountChanged: Event<IWindowsCountChangedEvent>;
@@ -109,7 +106,7 @@ export interface IWindowsMainService {
 	openExtensionDevelopmentHostWindow(extensionDevelopmentPath: string[], openConfig: IOpenConfiguration): ICodeWindow[];
 
 	sendToFocused(channel: string, ...args: any[]): void;
-	sendToAll(channel: string, payload: any, windowIdsToIgnore?: number[]): void;
+	sendToAll(channel: string, payload?: any, windowIdsToIgnore?: number[]): void;
 
 	getLastActiveWindow(): ICodeWindow | undefined;
 

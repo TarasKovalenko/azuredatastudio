@@ -15,7 +15,7 @@ import { DashboardWidget, IDashboardWidget, WIDGET_CONFIG, WidgetConfig } from '
 import { CommonServiceInterface } from 'sql/workbench/services/bootstrap/browser/commonServiceInterface.service';
 import { ComponentHostDirective } from 'sql/base/browser/componentHost.directive';
 import { InsightAction, InsightActionContext } from 'sql/workbench/browser/actions';
-import { Extensions, IInsightRegistry, IInsightsConfig, IInsightsView, getWidgetAutoRefreshState } from 'sql/platform/dashboard/browser/insightRegistry';
+import { Extensions, IInsightRegistry, IInsightsView, getWidgetAutoRefreshState } from 'sql/platform/dashboard/browser/insightRegistry';
 import { resolveQueryFilePath } from 'sql/workbench/services/insights/common/insightsUtils';
 
 import { RunInsightQueryAction } from './actions';
@@ -35,6 +35,7 @@ import { IConfigurationService } from 'vs/platform/configuration/common/configur
 import { IFileService } from 'vs/platform/files/common/files';
 import { URI } from 'vs/base/common/uri';
 import { subscriptionToDisposable } from 'sql/base/browser/lifecycle';
+import { IInsightsConfig } from 'sql/platform/extensions/common/extensions';
 
 const insightRegistry = Registry.as<IInsightRegistry>(Extensions.InsightContribution);
 
@@ -313,9 +314,9 @@ export class InsightsWidget extends DashboardWidget implements IDashboardWidget,
 		if (types.isStringArray(this.insightConfig.query)) {
 			this.insightConfig.query = this.insightConfig.query.join(' ');
 		} else if (this.insightConfig.queryFile) {
-			const filePath = await this.instantiationService.invokeFunction(resolveQueryFilePath, this.insightConfig.queryFile);
+			const fileUri: URI = await this.instantiationService.invokeFunction(resolveQueryFilePath, this.insightConfig.queryFile);
 
-			this.insightConfig.query = (await this.fileService.readFile(URI.file(filePath))).value.toString();
+			this.insightConfig.query = (await this.fileService.readFile(fileUri)).value.toString();
 		}
 	}
 }

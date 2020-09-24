@@ -6,7 +6,7 @@
 import { createDecorator } from 'vs/platform/instantiation/common/instantiation';
 import { Event } from 'vs/base/common/event';
 import * as azdata from 'azdata';
-import { IConnectionProfileGroup, ConnectionProfileGroup } from 'sql/platform/connection/common/connectionProfileGroup';
+import { IConnectionProfileGroup, ConnectionProfileGroup, INewConnectionProfileGroup } from 'sql/platform/connection/common/connectionProfileGroup';
 import { ConnectionProfile } from 'sql/platform/connection/common/connectionProfile';
 import { IConnectionProfile } from 'sql/platform/connection/common/interfaces';
 import { ConnectionManagementInfo } from 'sql/platform/connection/common/connectionManagementInfo';
@@ -51,7 +51,7 @@ export interface IConnectionCompletionOptions {
 	/**
 	 * Parameters to be used if connecting from an editor
 	 */
-	params: INewConnectionParams;
+	params?: INewConnectionParams;
 
 	/**
 	 * Open the connection dialog if connection fails
@@ -107,12 +107,12 @@ export interface IConnectionManagementService {
 	/**
 	 * Opens the connection dialog to create new connection
 	 */
-	showConnectionDialog(params?: INewConnectionParams, options?: IConnectionCompletionOptions, model?: IConnectionProfile, connectionResult?: IConnectionResult): Promise<void>;
+	showConnectionDialog(params?: INewConnectionParams, options?: IConnectionCompletionOptions, model?: Partial<IConnectionProfile>, connectionResult?: IConnectionResult): Promise<void>;
 
 	/**
 	 * Load the password and opens a new connection
 	 */
-	connect(connection: IConnectionProfile, uri: string, options?: IConnectionCompletionOptions, callbacks?: IConnectionCallbacks): Promise<IConnectionResult>;
+	connect(connection: IConnectionProfile, uri?: string, options?: IConnectionCompletionOptions, callbacks?: IConnectionCallbacks): Promise<IConnectionResult>;
 
 	/**
 	 * Opens a new connection and save the profile in settings
@@ -151,7 +151,7 @@ export interface IConnectionManagementService {
 
 	getActiveConnections(providers?: string[]): ConnectionProfile[];
 
-	saveProfileGroup(profile: IConnectionProfileGroup): Promise<string>;
+	saveProfileGroup(profile: INewConnectionProfileGroup): Promise<string>;
 
 	changeGroupIdForConnectionGroup(source: IConnectionProfileGroup, target: IConnectionProfileGroup): Promise<void>;
 
@@ -183,7 +183,7 @@ export interface IConnectionManagementService {
 
 	isRecent(connectionProfile: ConnectionProfile): boolean;
 
-	isConnected(fileUri: string, connectionProfile?: ConnectionProfile): boolean;
+	isConnected(fileUri?: string, connectionProfile?: ConnectionProfile): boolean;
 
 	disconnectEditor(owner: IConnectableInput, force?: boolean): Promise<boolean>;
 
@@ -268,12 +268,12 @@ export interface IConnectionManagementService {
 	removeConnectionProfileCredentials(profile: IConnectionProfile): IConnectionProfile;
 
 	/**
-	 * Get the credentials for a connected connection profile, as they would appear in the options dictionary
+	 * Get the credentials for a connection profile, as they would appear in the options dictionary
 	 * @param profileId The id of the connection profile to get the password for
 	 * @returns A dictionary containing the credentials as they would be included
-	 * in the connection profile's options dictionary, or undefined if the profile is not connected
+	 * in the connection profile's options dictionary, or undefined if the profile was not found
 	 */
-	getActiveConnectionCredentials(profileId: string): { [name: string]: string };
+	getConnectionCredentials(profileId: string): Promise<{ [name: string]: string }>;
 
 	/**
 	 * Get the ServerInfo for a connected connection profile
@@ -299,6 +299,8 @@ export interface IConnectionManagementService {
 	getConnectionProfileById(profileId: string): IConnectionProfile;
 
 	getProviderProperties(providerName: string): ConnectionProviderProperties;
+
+	getProviderLanguageMode(providerName?: string): string;
 
 	getConnectionIconId(connectionId: string): string;
 

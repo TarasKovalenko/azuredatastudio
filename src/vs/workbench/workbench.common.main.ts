@@ -56,7 +56,6 @@ import 'vs/workbench/browser/parts/views/viewsService';
 import 'vs/platform/undoRedo/common/undoRedoService';
 import 'vs/workbench/services/uriIdentity/common/uriIdentityService';
 import 'vs/workbench/services/extensions/browser/extensionUrlHandler';
-import 'vs/workbench/services/bulkEdit/browser/bulkEditService';
 import 'vs/workbench/services/keybinding/common/keybindingEditing';
 import 'vs/workbench/services/decorations/browser/decorationsService';
 import 'vs/workbench/services/progress/browser/progressService';
@@ -74,9 +73,10 @@ import 'vs/workbench/services/mode/common/workbenchModeService';
 import 'vs/workbench/services/commands/common/commandService';
 import 'vs/workbench/services/themes/browser/workbenchThemeService';
 import 'vs/workbench/services/label/common/labelService';
+import 'vs/workbench/services/extensionManagement/common/webExtensionsScannerService';
 import 'vs/workbench/services/extensionManagement/common/extensionEnablementService';
+import 'vs/workbench/services/extensionManagement/browser/builtinExtensionsScannerService';
 import 'vs/workbench/services/notification/common/notificationService';
-import 'vs/workbench/services/extensions/common/staticExtensions';
 import 'vs/workbench/services/userDataSync/common/userDataSyncUtil';
 import 'vs/workbench/services/remote/common/remoteExplorerService';
 import 'vs/workbench/services/workingCopy/common/workingCopyService';
@@ -85,6 +85,8 @@ import 'vs/workbench/services/filesConfiguration/common/filesConfigurationServic
 import 'vs/workbench/services/views/browser/viewDescriptorService';
 import 'vs/workbench/services/quickinput/browser/quickInputService';
 import 'vs/workbench/services/userDataSync/browser/userDataSyncWorkbenchService';
+import 'vs/workbench/services/authentication/browser/authenticationService';
+import 'vs/workbench/services/hover/browser/hoverService';
 
 import { registerSingleton } from 'vs/platform/instantiation/common/extensions';
 import { ExtensionGalleryService } from 'vs/platform/extensionManagement/common/extensionGalleryService';
@@ -111,10 +113,10 @@ import { IDownloadService } from 'vs/platform/download/common/download';
 import { DownloadService } from 'vs/platform/download/common/downloadService';
 import { OpenerService } from 'vs/editor/browser/services/openerService';
 import { IOpenerService } from 'vs/platform/opener/common/opener';
-import { IUserDataSyncEnablementService } from 'vs/platform/userDataSync/common/userDataSync';
-import { UserDataSyncEnablementService } from 'vs/platform/userDataSync/common/userDataSyncEnablementService';
+import { IUserDataSyncResourceEnablementService } from 'vs/platform/userDataSync/common/userDataSync';
+import { UserDataSyncResourceEnablementService } from 'vs/platform/userDataSync/common/userDataSyncResourceEnablementService';
 
-registerSingleton(IUserDataSyncEnablementService, UserDataSyncEnablementService);
+registerSingleton(IUserDataSyncResourceEnablementService, UserDataSyncResourceEnablementService);
 registerSingleton(IGlobalExtensionEnablementService, GlobalExtensionEnablementService);
 registerSingleton(IExtensionGalleryService, ExtensionGalleryService, true);
 registerSingleton(IContextViewService, ContextViewService, true);
@@ -195,6 +197,8 @@ import { INotebookService } from 'sql/workbench/services/notebook/browser/notebo
 import { IScriptingService, ScriptingService } from 'sql/platform/scripting/common/scriptingService';
 import { IAssessmentService } from 'sql/workbench/services/assessment/common/interfaces';
 import { AssessmentService } from 'sql/workbench/services/assessment/common/assessmentService';
+import { DataGridProviderService } from 'sql/workbench/services/dataGridProvider/browser/dataGridProviderService';
+import { IDataGridProviderService } from 'sql/workbench/services/dataGridProvider/common/dataGridProviderService';
 
 registerSingleton(IDashboardService, DashboardService);
 registerSingleton(IDashboardViewService, DashboardViewService);
@@ -233,6 +237,7 @@ registerSingleton(IAdsTelemetryService, AdsTelemetryService);
 registerSingleton(IObjectExplorerService, ObjectExplorerService);
 registerSingleton(IOEShimService, OEShimService);
 registerSingleton(IAssessmentService, AssessmentService);
+registerSingleton(IDataGridProviderService, DataGridProviderService);
 
 //#endregion
 
@@ -246,6 +251,9 @@ import 'vs/workbench/contrib/telemetry/browser/telemetry.contribution';
 import 'vs/workbench/contrib/preferences/browser/preferences.contribution';
 import 'vs/workbench/contrib/preferences/browser/keybindingsEditorContribution';
 import 'vs/workbench/contrib/preferences/browser/preferencesSearch';
+
+// Performance
+import 'vs/workbench/contrib/performance/browser/performance.contribution';
 
 // Notebook
 import 'vs/workbench/contrib/notebook/browser/notebook.contribution';
@@ -265,7 +273,8 @@ import 'vs/workbench/contrib/files/browser/files.contribution';
 import 'vs/workbench/contrib/backup/common/backup.contribution';
 
 // bulkEdit
-import 'vs/workbench/contrib/bulkEdit/browser/bulkEdit.contribution';
+import 'vs/workbench/contrib/bulkEdit/browser/bulkEditService';
+import 'vs/workbench/contrib/bulkEdit/browser/preview/bulkEdit.contribution';
 
 // Search
 import 'vs/workbench/contrib/search/browser/search.contribution';
@@ -279,7 +288,6 @@ import 'vs/workbench/contrib/sash/browser/sash.contribution';
 
 // SCM
 import 'vs/workbench/contrib/scm/browser/scm.contribution';
-import 'vs/workbench/contrib/scm/browser/scmViewlet';
 
 /* {{SQL CARBON EDIT}} // Debug
 import 'vs/workbench/contrib/debug/browser/debug.contribution';
@@ -301,6 +309,7 @@ import 'vs/workbench/contrib/url/browser/url.contribution';
 
 // Webview
 import 'vs/workbench/contrib/webview/browser/webview.contribution';
+import 'vs/workbench/contrib/webviewView/browser/webviewView.contribution';
 import 'vs/workbench/contrib/customEditor/browser/customEditor.contribution';
 
 // Extensions Management
@@ -313,6 +322,7 @@ import 'vs/workbench/contrib/output/browser/outputView';
 
 // Terminal
 import 'vs/workbench/contrib/terminal/common/environmentVariable.contribution';
+import 'vs/workbench/contrib/terminal/common/terminalExtensionPoints.contribution';
 import 'vs/workbench/contrib/terminal/browser/terminal.contribution';
 import 'vs/workbench/contrib/terminal/browser/terminalView';
 
@@ -331,6 +341,9 @@ import 'vs/workbench/contrib/remote/browser/remote';
 
 // CodeEditor Contributions
 import 'vs/workbench/contrib/codeEditor/browser/codeEditor.contribution';
+
+// Keybindings Contributions
+import 'vs/workbench/contrib/keybindings/browser/keybindings.contribution';
 
 // Execution
 import 'vs/workbench/contrib/externalTerminal/browser/externalTerminal.contribution';
@@ -398,11 +411,12 @@ import 'sql/workbench/contrib/query/common/resultsGrid.contribution';
 // data explorer
 import 'sql/workbench/contrib/dataExplorer/browser/dataExplorer.contribution';
 import 'sql/workbench/contrib/dataExplorer/browser/nodeActions.common.contribution';
-import 'sql/workbench/contrib/dataExplorer/browser/extensions.contribution';
-
 
 //editor replacement
 import 'sql/workbench/contrib/editorReplacement/common/editorReplacer.contribution';
+
+//configurationUpgrader replacement
+import 'sql/workbench/contrib/configuration/common/configurationUpgrader.contribution';
 
 // tasks
 import 'sql/workbench/contrib/tasks/browser/tasks.contribution';
@@ -429,6 +443,9 @@ import 'sql/workbench/contrib/accounts/browser/accountManagement.contribution';
 // profiler
 import 'sql/workbench/contrib/profiler/browser/profiler.contribution';
 import 'sql/workbench/contrib/profiler/browser/profilerActions.contribution';
+
+// resource viewer
+import 'sql/workbench/contrib/resourceViewer/browser/resourceViewer.contribution';
 
 // dashboard
 import 'sql/workbench/contrib/dashboard/browser/widgets/insights/views/charts/types/barChart.contribution';

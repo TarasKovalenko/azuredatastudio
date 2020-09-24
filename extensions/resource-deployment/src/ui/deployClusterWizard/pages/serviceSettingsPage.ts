@@ -114,9 +114,9 @@ export class ServiceSettingsPage extends WizardPageBase<DeployClusterWizard> {
 			]
 		};
 
-		this.pageObject.registerContent((view: azdata.ModelView) => {
-			const createSectionFunc = (sectionInfo: SectionInfo): azdata.GroupContainer => {
-				return createSection({
+		this.pageObject.registerContent(async (view: azdata.ModelView) => {
+			const createSectionFunc = async (sectionInfo: SectionInfo): Promise<azdata.GroupContainer> => {
+				return await createSection({
 					view: view,
 					container: this.wizard.wizardObject,
 					inputComponents: this.inputComponents,
@@ -128,10 +128,11 @@ export class ServiceSettingsPage extends WizardPageBase<DeployClusterWizard> {
 						this.inputComponents[name] = { component: inputComponentInfo.component };
 					},
 					onNewValidatorCreated: (validator: Validator): void => {
-					}
+					},
+					toolsService: this.wizard.toolsService
 				});
 			};
-			const scaleSection = createSectionFunc(scaleSectionInfo);
+			const scaleSection = await createSectionFunc(scaleSectionInfo);
 			this.endpointSection = this.createEndpointSection(view);
 			const storageSection = this.createStorageSection(view);
 
@@ -322,7 +323,7 @@ export class ServiceSettingsPage extends WizardPageBase<DeployClusterWizard> {
 		};
 	}
 
-	public onEnter(): void {
+	public async onEnter(): Promise<void> {
 		this.setInputBoxValue(VariableNames.ComputePoolScale_VariableName);
 		this.setInputBoxValue(VariableNames.DataPoolScale_VariableName);
 		this.setInputBoxValue(VariableNames.HDFSPoolScale_VariableName);
@@ -399,8 +400,8 @@ export class ServiceSettingsPage extends WizardPageBase<DeployClusterWizard> {
 		});
 	}
 
-	public onLeave(): void {
-		setModelValues(this.inputComponents, this.wizard.model);
+	public async onLeave(): Promise<void> {
+		await setModelValues(this.inputComponents, this.wizard.model);
 		Object.assign(this.wizard.inputComponents, this.inputComponents);
 		this.wizard.wizardObject.registerNavigationValidator((pcInfo) => {
 			return true;

@@ -7,7 +7,7 @@ import * as assert from 'assert';
 import { EditorActivation } from 'vs/platform/editor/common/editor';
 import { URI } from 'vs/base/common/uri';
 import { Event } from 'vs/base/common/event';
-import { BaseEditor } from 'vs/workbench/browser/parts/editor/baseEditor';
+import { EditorPane } from 'vs/workbench/browser/parts/editor/editorPane';
 import { EditorInput, EditorsOrder, SideBySideEditorInput } from 'vs/workbench/common/editor';
 import { workbenchInstantiationService, TestServiceAccessor, registerTestEditor, TestFileEditorInput } from 'vs/workbench/test/browser/workbenchTestServices';
 import { ResourceEditorInput } from 'vs/workbench/common/editor/resourceEditorInput';
@@ -377,8 +377,8 @@ suite.skip('EditorService', () => { // {{SQL CARBON EDIT}} skip suite
 
 		// Untyped Input (diff)
 		input = service.createEditorInput({
-			leftResource: toResource.call(this, '/master.html'),
-			rightResource: toResource.call(this, '/detail.html')
+			leftResource: toResource.call(this, '/primary.html'),
+			rightResource: toResource.call(this, '/secondary.html')
 		});
 		assert(input instanceof DiffEditorInput);
 	});
@@ -386,7 +386,7 @@ suite.skip('EditorService', () => { // {{SQL CARBON EDIT}} skip suite
 	test('delegate', function (done) {
 		const instantiationService = workbenchInstantiationService();
 
-		class MyEditor extends BaseEditor {
+		class MyEditor extends EditorPane {
 
 			constructor(id: string) {
 				super(id, undefined!, new TestThemeService(), new TestStorageService());
@@ -403,7 +403,7 @@ suite.skip('EditorService', () => { // {{SQL CARBON EDIT}} skip suite
 
 		const ed = instantiationService.createInstance(MyEditor, 'my.editor');
 
-		const inp = instantiationService.createInstance(ResourceEditorInput, 'name', 'description', URI.parse('my://resource-delegate'), undefined);
+		const inp = instantiationService.createInstance(ResourceEditorInput, URI.parse('my://resource-delegate'), 'name', 'description', undefined);
 		const delegate = instantiationService.createInstance(DelegatingEditorService, async (delegate, group, input) => {
 			assert.strictEqual(input, inp);
 
@@ -1084,7 +1084,7 @@ suite.skip('EditorService', () => { // {{SQL CARBON EDIT}} skip suite
 		const editor = await service.openEditor(input1, { pinned: true });
 		await service.openEditor(input2, { pinned: true });
 
-		const whenClosed = service.whenClosed([input1.resource, input2.resource]);
+		const whenClosed = service.whenClosed([{ resource: input1.resource }, { resource: input2.resource }]);
 
 		editor?.group?.closeAllEditors();
 

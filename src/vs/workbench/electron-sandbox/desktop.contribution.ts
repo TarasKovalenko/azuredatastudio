@@ -92,7 +92,7 @@ import { InstallVSIXAction } from 'vs/workbench/contrib/extensions/browser/exten
 
 	// Actions: Developer
 	(function registerDeveloperActions(): void {
-		const developerCategory = nls.localize('developer', "Developer");
+		const developerCategory = nls.localize({ key: 'developer', comment: ['A developer on Code itself or someone diagnosing issues in Code'] }, "Developer");
 		registry.registerWorkbenchAction(SyncActionDescriptor.from(ReloadWindowWithExtensionsDisabledAction), 'Developer: Reload With Extensions Disabled', developerCategory);
 		registry.registerWorkbenchAction(SyncActionDescriptor.from(ToggleDevToolsAction), 'Developer: Toggle Developer Tools', developerCategory);
 
@@ -271,9 +271,9 @@ import { InstallVSIXAction } from 'vs/workbench/contrib/extensions/browser/exten
 			'window.autoDetectHighContrast': {
 				'type': 'boolean',
 				'default': true,
-				'description': nls.localize('autoDetectHighContrast', "If enabled, will automatically change to high contrast theme if Windows is using a high contrast theme, and to dark theme when switching away from a Windows high contrast theme."),
+				'description': nls.localize('autoDetectHighContrast', "If enabled, will automatically change to high contrast theme if the OS is using a high contrast theme, and to dark theme when switching away from a high contrast theme."),
 				'scope': ConfigurationScope.APPLICATION,
-				'included': isWindows
+				'included': isWindows || isMacintosh
 			},
 			'window.doubleClickIconToClose': {
 				'type': 'boolean',
@@ -327,6 +327,31 @@ import { InstallVSIXAction } from 'vs/workbench/contrib/extensions/browser/exten
 			}
 		}
 	});
+
+	// Keybinding
+	registry.registerConfiguration({
+		'id': 'keyboard',
+		'order': 15,
+		'type': 'object',
+		'title': nls.localize('keyboardConfigurationTitle', "Keyboard"),
+		'properties': {
+			'keyboard.touchbar.enabled': {
+				'type': 'boolean',
+				'default': true,
+				'description': nls.localize('touchbar.enabled', "Enables the macOS touchbar buttons on the keyboard if available."),
+				'included': isMacintosh
+			},
+			'keyboard.touchbar.ignored': {
+				'type': 'array',
+				'items': {
+					'type': 'string'
+				},
+				'default': [],
+				'markdownDescription': nls.localize('touchbar.ignored', 'A set of identifiers for entries in the touchbar that should not show up (for example `workbench.action.navigateBack`.'),
+				'included': isMacintosh
+			}
+		}
+	});
 })();
 
 // JSON Schemas
@@ -356,6 +381,21 @@ import { InstallVSIXAction } from 'vs/workbench/contrib/extensions/browser/exten
 			'force-color-profile': {
 				type: 'string',
 				markdownDescription: nls.localize('argv.forceColorProfile', 'Allows to override the color profile to use. If you experience colors appear badly, try to set this to `srgb` and restart.')
+			},
+			'enable-crash-reporter': {
+				type: 'boolean',
+				markdownDescription: nls.localize('argv.enableCrashReporter', 'Allows to disable crash reporting, should restart the app if the value is changed.')
+			},
+			'crash-reporter-id': {
+				type: 'string',
+				markdownDescription: nls.localize('argv.crashReporterId', 'Unique id used for correlating crash reports sent from this app instance.')
+			},
+			'enable-proposed-api': {
+				type: 'array',
+				description: nls.localize('argv.enebleProposedApi', "Enable proposed APIs for a list of extension ids (such as \`vscode.git\`). Proposed APIs are unstable and subject to breaking without warning at any time. This should only be set for extension development and testing purposes."),
+				items: {
+					type: 'string'
+				}
 			}
 		}
 	};

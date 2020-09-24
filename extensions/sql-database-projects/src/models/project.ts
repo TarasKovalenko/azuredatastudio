@@ -9,10 +9,12 @@ import * as constants from '../common/constants';
 import * as utils from '../common/utils';
 import * as xmlFormat from 'xml-formatter';
 import * as os from 'os';
+import * as templates from '../templates/templates';
 
-import { Uri } from 'vscode';
+import { Uri, window } from 'vscode';
 import { promises as fs } from 'fs';
 import { DataSource } from './dataSources/dataSources';
+import { ISystemDatabaseReferenceSettings, IDacpacReferenceSettings, IProjectReferenceSettings } from './IDatabaseReferenceSettings';
 
 /**
  * Class representing a Project, and providing functions for operating on it
@@ -20,14 +22,18 @@ import { DataSource } from './dataSources/dataSources';
 export class Project {
 	public projectFilePath: string;
 	public projectFileName: string;
-	public files: ProjectEntry[] = [];
+	public projectGuid: string | undefined;
+	public files: FileProjectEntry[] = [];
 	public dataSources: DataSource[] = [];
 	public importedTargets: string[] = [];
-	public databaseReferences: string[] = [];
+	public databaseReferences: IDatabaseReferenceProjectEntry[] = [];
 	public sqlCmdVariables: Record<string, string> = {};
+	public preDeployScripts: FileProjectEntry[] = [];
+	public postDeployScripts: FileProjectEntry[] = [];
+	public noneDeployScripts: FileProjectEntry[] = [];
 
 	public get projectFolderPath() {
-		return path.dirname(this.projectFilePath);
+		return Uri.file(path.dirname(this.projectFilePath)).fsPath;
 	}
 
 	private projFileXmlDoc: any = undefined;
@@ -38,49 +44,136 @@ export class Project {
 	}
 
 	/**
+	 * Open and load a .sqlproj file
+	 */
+	public static async openProject(projectFilePath: string): Promise<Project> {
+		const proj = new Project(projectFilePath);
+		await proj.readProjFile();
+
+		return proj;
+	}
+
+	/**
 	 * Reads the project setting and contents from the file
 	 */
 	public async readProjFile() {
+		this.resetProject();
+
 		const projFileText = await fs.readFile(this.projectFilePath);
 		this.projFileXmlDoc = new xmldom.DOMParser().parseFromString(projFileText.toString());
+
+		// get projectGUID
+		this.projectGuid = this.projFileXmlDoc.documentElement.getElementsByTagName(constants.ProjectGuid)[0].childNodes[0].nodeValue;
 
 		// find all folders and files to include
 		for (let ig = 0; ig < this.projFileXmlDoc.documentElement.getElementsByTagName(constants.ItemGroup).length; ig++) {
 			const itemGroup = this.projFileXmlDoc.documentElement.getElementsByTagName(constants.ItemGroup)[ig];
 
-			for (let b = 0; b < itemGroup.getElementsByTagName(constants.Build).length; b++) {
-				this.files.push(this.createProjectEntry(itemGroup.getElementsByTagName(constants.Build)[b].getAttribute(constants.Include), EntryType.File));
+			const buildElements = itemGroup.getElementsByTagName(constants.Build);
+			for (let b = 0; b < buildElements.length; b++) {
+				this.files.push(this.createFileProjectEntry(buildElements[b].getAttribute(constants.Include), EntryType.File));
 			}
 
-			for (let f = 0; f < itemGroup.getElementsByTagName(constants.Folder).length; f++) {
-				this.files.push(this.createProjectEntry(itemGroup.getElementsByTagName(constants.Folder)[f].getAttribute(constants.Include), EntryType.Folder));
+			const folderElements = itemGroup.getElementsByTagName(constants.Folder);
+			for (let f = 0; f < folderElements.length; f++) {
+				// don't add Properties folder since it isn't supported for now
+				if (folderElements[f].getAttribute(constants.Include) !== constants.Properties) {
+					this.files.push(this.createFileProjectEntry(folderElements[f].getAttribute(constants.Include), EntryType.Folder));
+				}
+			}
+
+			// find all pre-deployment scripts to include
+			let preDeployScriptCount: number = 0;
+			const preDeploy = itemGroup.getElementsByTagName(constants.PreDeploy);
+			for (let pre = 0; pre < preDeploy.length; pre++) {
+				this.preDeployScripts.push(this.createFileProjectEntry(preDeploy[pre].getAttribute(constants.Include), EntryType.File));
+				preDeployScriptCount++;
+			}
+
+			// find all post-deployment scripts to include
+			let postDeployScriptCount: number = 0;
+			const postDeploy = itemGroup.getElementsByTagName(constants.PostDeploy);
+			for (let post = 0; post < postDeploy.length; post++) {
+				this.postDeployScripts.push(this.createFileProjectEntry(postDeploy[post].getAttribute(constants.Include), EntryType.File));
+				postDeployScriptCount++;
+			}
+
+			if (preDeployScriptCount > 1 || postDeployScriptCount > 1) {
+				window.showWarningMessage(constants.prePostDeployCount, constants.okString);
+			}
+
+			// find all none-deployment scripts to include
+			const noneItems = itemGroup.getElementsByTagName(constants.None);
+			for (let n = 0; n < noneItems.length; n++) {
+				this.noneDeployScripts.push(this.createFileProjectEntry(noneItems[n].getAttribute(constants.Include), EntryType.File));
 			}
 		}
 
 		// find all import statements to include
-		for (let i = 0; i < this.projFileXmlDoc.documentElement.getElementsByTagName(constants.Import).length; i++) {
-			const importTarget = this.projFileXmlDoc.documentElement.getElementsByTagName(constants.Import)[i];
+		const importElements = this.projFileXmlDoc.documentElement.getElementsByTagName(constants.Import);
+		for (let i = 0; i < importElements.length; i++) {
+			const importTarget = importElements[i];
 			this.importedTargets.push(importTarget.getAttribute(constants.Project));
 		}
 
 		// find all SQLCMD variables to include
-		for (let i = 0; i < this.projFileXmlDoc.documentElement.getElementsByTagName(constants.SqlCmdVariable).length; i++) {
-			const sqlCmdVar = this.projFileXmlDoc.documentElement.getElementsByTagName(constants.SqlCmdVariable)[i];
-			const varName = sqlCmdVar.getAttribute(constants.Include);
-
-			const varValue = sqlCmdVar.getElementsByTagName(constants.DefaultValue)[0].childNodes[0].nodeValue;
-			this.sqlCmdVariables[varName] = varValue;
-		}
+		this.sqlCmdVariables = utils.readSqlCmdVariables(this.projFileXmlDoc);
 
 		// find all database references to include
-		for (let r = 0; r < this.projFileXmlDoc.documentElement.getElementsByTagName(constants.ArtifactReference).length; r++) {
-			const filepath = this.projFileXmlDoc.documentElement.getElementsByTagName(constants.ArtifactReference)[r].getAttribute(constants.Include);
+		const references = this.projFileXmlDoc.documentElement.getElementsByTagName(constants.ArtifactReference);
+		for (let r = 0; r < references.length; r++) {
+			if (references[r].getAttribute(constants.Condition) !== constants.NotNetCoreCondition) {
+				const filepath = references[r].getAttribute(constants.Include);
+				if (!filepath) {
+					throw new Error(constants.invalidDatabaseReference);
+				}
+
+				const nameNodes = references[r].getElementsByTagName(constants.DatabaseVariableLiteralValue);
+				const name = nameNodes.length === 1 ? nameNodes[0].childNodes[0].nodeValue : undefined;
+
+				const suppressMissingDependenciesErrorNode = references[r].getElementsByTagName(constants.SuppressMissingDependenciesErrors);
+				const suppressMissingDependencies = suppressMissingDependenciesErrorNode[0].childNodes[0].nodeValue === true ?? false;
+
+				this.databaseReferences.push(new DacpacReferenceProjectEntry({
+					dacpacFileLocation: Uri.file(utils.getPlatformSafeFileEntryPath(filepath)),
+					databaseName: name,
+					suppressMissingDependenciesErrors: suppressMissingDependencies
+				}));
+			}
+		}
+
+		// find project references
+		const projectReferences = this.projFileXmlDoc.documentElement.getElementsByTagName(constants.ProjectReference);
+		for (let r = 0; r < projectReferences.length; r++) {
+			const filepath = projectReferences[r].getAttribute(constants.Include);
 			if (!filepath) {
 				throw new Error(constants.invalidDatabaseReference);
 			}
 
-			this.databaseReferences.push(path.parse(filepath).name);
+			const nameNodes = projectReferences[r].getElementsByTagName(constants.Name);
+			const name = nameNodes[0].childNodes[0].nodeValue;
+
+			const suppressMissingDependenciesErrorNode = projectReferences[r].getElementsByTagName(constants.SuppressMissingDependenciesErrors);
+			const suppressMissingDependencies = suppressMissingDependenciesErrorNode[0].childNodes[0].nodeValue === true ?? false;
+
+			this.databaseReferences.push(new SqlProjectReferenceProjectEntry({
+				projectRelativePath: Uri.file(utils.getPlatformSafeFileEntryPath(filepath)),
+				projectName: name,
+				projectGuid: '', // don't care when just reading project as a reference
+				suppressMissingDependenciesErrors: suppressMissingDependencies
+			}));
 		}
+	}
+
+	private resetProject() {
+		this.files = [];
+		this.importedTargets = [];
+		this.databaseReferences = [];
+		this.sqlCmdVariables = {};
+		this.preDeployScripts = [];
+		this.postDeployScripts = [];
+		this.noneDeployScripts = [];
+		this.projFileXmlDoc = undefined;
 	}
 
 	public async updateProjectForRoundTrip() {
@@ -146,7 +239,7 @@ export class Project {
 			await fs.mkdir(absoluteFolderPath, { recursive: true });
 		}
 
-		const folderEntry = this.createProjectEntry(relativeFolderPath, EntryType.Folder);
+		const folderEntry = this.createFileProjectEntry(relativeFolderPath, EntryType.Folder);
 		this.files.push(folderEntry);
 
 		await this.addToProjFile(folderEntry);
@@ -158,7 +251,7 @@ export class Project {
 	 * @param relativeFilePath Relative path of the file
 	 * @param contents Contents to be written to the new file
 	 */
-	public async addScriptItem(relativeFilePath: string, contents?: string): Promise<ProjectEntry> {
+	public async addScriptItem(relativeFilePath: string, contents?: string, itemType?: string): Promise<FileProjectEntry> {
 		const absoluteFilePath = path.join(this.projectFolderPath, relativeFilePath);
 
 		if (contents) {
@@ -172,12 +265,50 @@ export class Project {
 			throw new Error(constants.noFileExist(absoluteFilePath));
 		}
 
-		const fileEntry = this.createProjectEntry(relativeFilePath, EntryType.File);
-		this.files.push(fileEntry);
+		const fileEntry = this.createFileProjectEntry(relativeFilePath, EntryType.File);
 
-		await this.addToProjFile(fileEntry);
+		let xmlTag;
+		switch (itemType) {
+			case templates.preDeployScript:
+				xmlTag = constants.PreDeploy;
+				this.preDeployScripts.length === 0 ? this.preDeployScripts.push(fileEntry) : this.noneDeployScripts.push(fileEntry);
+				break;
+			case templates.postDeployScript:
+				xmlTag = constants.PostDeploy;
+				this.postDeployScripts.length === 0 ? this.postDeployScripts.push(fileEntry) : this.noneDeployScripts.push(fileEntry);
+				break;
+			default:
+				xmlTag = constants.Build;
+				this.files.push(fileEntry);
+		}
+
+		await this.addToProjFile(fileEntry, xmlTag);
 
 		return fileEntry;
+	}
+
+	public async exclude(entry: FileProjectEntry): Promise<void> {
+		const toExclude: FileProjectEntry[] = this.files.concat(this.preDeployScripts).concat(this.postDeployScripts).concat(this.noneDeployScripts).filter(x => x.fsUri.fsPath.startsWith(entry.fsUri.fsPath));
+		await this.removeFromProjFile(toExclude);
+
+		this.files = this.files.filter(x => !x.fsUri.fsPath.startsWith(entry.fsUri.fsPath));
+		this.preDeployScripts = this.preDeployScripts.filter(x => !x.fsUri.fsPath.startsWith(entry.fsUri.fsPath));
+		this.postDeployScripts = this.postDeployScripts.filter(x => !x.fsUri.fsPath.startsWith(entry.fsUri.fsPath));
+		this.noneDeployScripts = this.noneDeployScripts.filter(x => !x.fsUri.fsPath.startsWith(entry.fsUri.fsPath));
+	}
+
+	public async deleteFileFolder(entry: FileProjectEntry): Promise<void> {
+		// compile a list of folder contents to delete; if entry is a file, contents will contain only itself
+		const toDeleteFiles: FileProjectEntry[] = this.files.concat(this.preDeployScripts).concat(this.postDeployScripts).concat(this.noneDeployScripts).filter(x => x.fsUri.fsPath.startsWith(entry.fsUri.fsPath) && x.type === EntryType.File);
+		const toDeleteFolders: FileProjectEntry[] = this.files.filter(x => x.fsUri.fsPath.startsWith(entry.fsUri.fsPath) && x.type === EntryType.Folder).sort(x => -x.relativePath.length);
+
+		await Promise.all(toDeleteFiles.map(x => fs.unlink(x.fsUri.fsPath)));
+
+		for (const folder of toDeleteFolders) {
+			await fs.rmdir(folder.fsUri.fsPath); // TODO: replace .sort() and iteration with rmdir recursive flag once that's unbugged
+		}
+
+		await this.exclude(entry);
 	}
 
 	/**
@@ -193,23 +324,30 @@ export class Project {
 	/**
 	 * Adds reference to the appropriate system database dacpac to the project
 	 */
-	public async addSystemDatabaseReference(name: SystemDatabase): Promise<void> {
+	public async addSystemDatabaseReference(settings: ISystemDatabaseReferenceSettings): Promise<void> {
 		let uri: Uri;
-		let dbName: string;
-		if (name === SystemDatabase.master) {
+		let ssdtUri: Uri;
+
+		if (settings.systemDb === SystemDatabase.master) {
 			uri = this.getSystemDacpacUri(constants.masterDacpac);
-			dbName = constants.master;
+			ssdtUri = this.getSystemDacpacSsdtUri(constants.masterDacpac);
 		} else {
 			uri = this.getSystemDacpacUri(constants.msdbDacpac);
-			dbName = constants.msdb;
+			ssdtUri = this.getSystemDacpacSsdtUri(constants.msdbDacpac);
 		}
 
-		this.addDatabaseReference(uri, DatabaseReferenceLocation.differentDatabaseSameServer, true, dbName);
+		const systemDatabaseReferenceProjectEntry = new SystemDatabaseReferenceProjectEntry(uri, ssdtUri, <string>settings.databaseName, settings.suppressMissingDependenciesErrors);
+		await this.addToProjFile(systemDatabaseReferenceProjectEntry);
 	}
 
 	public getSystemDacpacUri(dacpac: string): Uri {
 		let version = this.getProjectTargetPlatform();
 		return Uri.parse(path.join('$(NETCoreTargetsPath)', 'SystemDacpacs', version, dacpac));
+	}
+
+	public getSystemDacpacSsdtUri(dacpac: string): Uri {
+		let version = this.getProjectTargetPlatform();
+		return Uri.parse(path.join('$(DacPacRootPath)', 'Extensions', 'Microsoft', 'SQLDB', 'Extensions', 'SqlServer', version, 'SqlSchemas', dacpac));
 	}
 
 	public getProjectTargetPlatform(): string {
@@ -239,16 +377,37 @@ export class Project {
 	 * @param uri Uri of the dacpac
 	 * @param databaseName name of the database
 	 */
-	public async addDatabaseReference(uri: Uri, databaseLocation: DatabaseReferenceLocation, isSystemDatabase: boolean, databaseName?: string): Promise<void> {
-		let databaseReferenceEntry = new DatabaseReferenceProjectEntry(uri, databaseLocation, isSystemDatabase, databaseName);
+	public async addDatabaseReference(settings: IDacpacReferenceSettings): Promise<void> {
+		const databaseReferenceEntry = new DacpacReferenceProjectEntry(settings);
 		await this.addToProjFile(databaseReferenceEntry);
 	}
 
-	public createProjectEntry(relativePath: string, entryType: EntryType): ProjectEntry {
-		return new ProjectEntry(Uri.file(path.join(this.projectFolderPath, relativePath)), relativePath, entryType);
+	/**
+	 * Adds reference to a another project in the workspace
+	 * @param uri Uri of the dacpac
+	 * @param databaseName name of the database
+	 */
+	public async addProjectReference(settings: IProjectReferenceSettings): Promise<void> {
+		const projectReferenceEntry = new SqlProjectReferenceProjectEntry(settings);
+		await this.addToProjFile(projectReferenceEntry);
 	}
 
-	private findOrCreateItemGroup(containedTag?: string): any {
+	/**
+	 * Adds a SQLCMD variable to the project
+	 * @param name name of the variable
+	 * @param defaultValue
+	 */
+	public async addSqlCmdVariable(name: string, defaultValue: string) {
+		const sqlCmdVariableEntry = new SqlCmdVariableProjectEntry(name, defaultValue);
+		await this.addToProjFile(sqlCmdVariableEntry);
+	}
+
+	public createFileProjectEntry(relativePath: string, entryType: EntryType): FileProjectEntry {
+		let platformSafeRelativePath = utils.getPlatformSafeFileEntryPath(relativePath);
+		return new FileProjectEntry(Uri.file(path.join(this.projectFolderPath, platformSafeRelativePath)), relativePath, entryType);
+	}
+
+	private findOrCreateItemGroup(containedTag?: string, prePostScriptExist?: { scriptExist: boolean; }): any {
 		let outputItemGroup = undefined;
 
 		// search for a particular item goup if a child type is provided
@@ -269,44 +428,243 @@ export class Project {
 		if (!outputItemGroup) {
 			outputItemGroup = this.projFileXmlDoc.createElement(constants.ItemGroup);
 			this.projFileXmlDoc.documentElement.appendChild(outputItemGroup);
+			if (prePostScriptExist) {
+				prePostScriptExist.scriptExist = false;
+			}
 		}
 
 		return outputItemGroup;
 	}
 
-	private addFileToProjFile(path: string) {
-		const newFileNode = this.projFileXmlDoc.createElement(constants.Build);
-		newFileNode.setAttribute(constants.Include, path);
+	private addFileToProjFile(path: string, xmlTag: string): void {
+		let itemGroup;
 
-		this.findOrCreateItemGroup(constants.Build).appendChild(newFileNode);
+		if (xmlTag === constants.PreDeploy || xmlTag === constants.PostDeploy) {
+			let prePostScriptExist = { scriptExist: true };
+			itemGroup = this.findOrCreateItemGroup(xmlTag, prePostScriptExist);
+			if (prePostScriptExist.scriptExist === true) {
+				window.showInformationMessage(constants.deployScriptExists(xmlTag));
+				xmlTag = constants.None;	// Add only one pre-deploy and post-deploy script. All additional ones get added in the same item group with None tag
+			}
+		}
+		else {
+			itemGroup = this.findOrCreateItemGroup(xmlTag);
+		}
+
+		const newFileNode = this.projFileXmlDoc.createElement(xmlTag);
+		newFileNode.setAttribute(constants.Include, utils.convertSlashesForSqlProj(path));
+		itemGroup.appendChild(newFileNode);
 	}
 
-	private addFolderToProjFile(path: string) {
+	private removeFileFromProjFile(path: string): void {
+		const fileNodes = this.projFileXmlDoc.documentElement.getElementsByTagName(constants.Build);
+		const preDeployNodes = this.projFileXmlDoc.documentElement.getElementsByTagName(constants.PreDeploy);
+		const postDeployNodes = this.projFileXmlDoc.documentElement.getElementsByTagName(constants.PostDeploy);
+		const noneNodes = this.projFileXmlDoc.documentElement.getElementsByTagName(constants.None);
+		const nodes = [fileNodes, preDeployNodes, postDeployNodes, noneNodes];
+
+		let deleted = false;
+		for (let i = 0; i < nodes.length; i++) {
+			deleted = this.removeNode(path, nodes[i]);
+
+			if (deleted) {
+				return;
+			}
+		}
+
+		throw new Error(constants.unableToFindObject(path, constants.fileObject));
+	}
+
+	private removeNode(includeString: string, nodes: any): boolean {
+		for (let i = 0; i < nodes.length; i++) {
+			const parent = nodes[i].parentNode;
+			if (nodes[i].getAttribute(constants.Include) === utils.convertSlashesForSqlProj(includeString)) {
+				parent.removeChild(nodes[i]);
+
+				// delete ItemGroup if this was the only entry
+				// only want element nodes, not text nodes
+				const otherChildren = Array.from(parent.childNodes).filter((c: any) => c.childNodes);
+				if (otherChildren.length === 0) {
+					parent.parentNode.removeChild(parent);
+				}
+
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private addFolderToProjFile(path: string): void {
 		const newFolderNode = this.projFileXmlDoc.createElement(constants.Folder);
-		newFolderNode.setAttribute(constants.Include, path);
+		newFolderNode.setAttribute(constants.Include, utils.convertSlashesForSqlProj(path));
 
 		this.findOrCreateItemGroup(constants.Folder).appendChild(newFolderNode);
 	}
 
-	private addDatabaseReferenceToProjFile(entry: DatabaseReferenceProjectEntry): void {
-		const referenceNode = this.projFileXmlDoc.createElement(constants.ArtifactReference);
-		referenceNode.setAttribute(constants.Condition, constants.NetCoreCondition);
-		referenceNode.setAttribute(constants.Include, entry.isSystemDatabase ? entry.fsUri.fsPath.substring(1) : entry.fsUri.fsPath); // need to remove the leading slash for system database path for build to work on Windows
+	private removeFolderFromProjFile(path: string): void {
+		const folderNodes = this.projFileXmlDoc.documentElement.getElementsByTagName(constants.Folder);
+		const deleted = this.removeNode(path, folderNodes);
 
-		let suppressMissingDependenciesErrorNode = this.projFileXmlDoc.createElement(constants.SuppressMissingDependenciesErrors);
-		let falseTextNode = this.projFileXmlDoc.createTextNode('False');
-		suppressMissingDependenciesErrorNode.appendChild(falseTextNode);
-		referenceNode.appendChild(suppressMissingDependenciesErrorNode);
+		if (!deleted) {
+			throw new Error(constants.unableToFindObject(path, constants.folderObject));
+		}
+	}
 
-		if (entry.databaseLocation === DatabaseReferenceLocation.differentDatabaseSameServer) {
-			let databaseVariableLiteralValue = this.projFileXmlDoc.createElement(constants.DatabaseVariableLiteralValue);
-			let databaseTextNode = this.projFileXmlDoc.createTextNode(entry.name);
-			databaseVariableLiteralValue.appendChild(databaseTextNode);
-			referenceNode.appendChild(databaseVariableLiteralValue);
+	private removeSqlCmdVariableFromProjFile(variableName: string): void {
+		const sqlCmdVariableNodes = this.projFileXmlDoc.documentElement.getElementsByTagName(constants.SqlCmdVariable);
+		const deleted = this.removeNode(variableName, sqlCmdVariableNodes);
+
+		if (!deleted) {
+			throw new Error(constants.unableToFindSqlCmdVariable(variableName));
+		}
+	}
+
+	private addSystemDatabaseReferenceToProjFile(entry: SystemDatabaseReferenceProjectEntry): void {
+		const systemDbReferenceNode = this.projFileXmlDoc.createElement(constants.ArtifactReference);
+
+		// if it's a system database reference, we'll add an additional node with the SSDT location of the dacpac later
+		systemDbReferenceNode.setAttribute(constants.Condition, constants.NetCoreCondition);
+		systemDbReferenceNode.setAttribute(constants.Include, entry.pathForSqlProj());
+		this.addDatabaseReferenceChildren(systemDbReferenceNode, entry);
+		this.findOrCreateItemGroup(constants.ArtifactReference).appendChild(systemDbReferenceNode);
+		this.databaseReferences.push(entry);
+
+		// add a reference to the system dacpac in SSDT if it's a system db
+		const ssdtReferenceNode = this.projFileXmlDoc.createElement(constants.ArtifactReference);
+		ssdtReferenceNode.setAttribute(constants.Condition, constants.NotNetCoreCondition);
+		ssdtReferenceNode.setAttribute(constants.Include, entry.ssdtPathForSqlProj());
+		this.addDatabaseReferenceChildren(ssdtReferenceNode, entry);
+		this.findOrCreateItemGroup(constants.ArtifactReference).appendChild(ssdtReferenceNode);
+	}
+
+	private addDatabaseReferenceToProjFile(entry: IDatabaseReferenceProjectEntry): void {
+		// check if reference to this database already exists
+		if (this.databaseReferenceExists(entry)) {
+			throw new Error(constants.databaseReferenceAlreadyExists);
 		}
 
-		this.findOrCreateItemGroup(constants.ArtifactReference).appendChild(referenceNode);
-		this.databaseReferences.push(path.parse(entry.fsUri.fsPath.toString()).name);
+		if (entry instanceof SystemDatabaseReferenceProjectEntry) {
+			this.addSystemDatabaseReferenceToProjFile(<SystemDatabaseReferenceProjectEntry>entry);
+		} else if (entry instanceof SqlProjectReferenceProjectEntry) {
+			const referenceNode = this.projFileXmlDoc.createElement(constants.ProjectReference);
+			referenceNode.setAttribute(constants.Include, entry.pathForSqlProj());
+			this.addProjectReferenceChildren(referenceNode, <SqlProjectReferenceProjectEntry>entry);
+			this.addDatabaseReferenceChildren(referenceNode, entry);
+			this.findOrCreateItemGroup(constants.ProjectReference).appendChild(referenceNode);
+			this.databaseReferences.push(entry);
+		} else {
+			const referenceNode = this.projFileXmlDoc.createElement(constants.ArtifactReference);
+			referenceNode.setAttribute(constants.Include, entry.pathForSqlProj());
+			this.addDatabaseReferenceChildren(referenceNode, entry);
+			this.findOrCreateItemGroup(constants.ArtifactReference).appendChild(referenceNode);
+			this.databaseReferences.push(entry);
+		}
+	}
+
+	private databaseReferenceExists(entry: IDatabaseReferenceProjectEntry): boolean {
+		const found = this.databaseReferences.find(reference => reference.fsUri.fsPath === entry.fsUri.fsPath) !== undefined;
+		return found;
+	}
+
+	private addDatabaseReferenceChildren(referenceNode: any, entry: IDatabaseReferenceProjectEntry): void {
+		const suppressMissingDependenciesErrorNode = this.projFileXmlDoc.createElement(constants.SuppressMissingDependenciesErrors);
+		const suppressMissingDependenciesErrorTextNode = this.projFileXmlDoc.createTextNode(entry.suppressMissingDependenciesErrors ? constants.True : constants.False);
+		suppressMissingDependenciesErrorNode.appendChild(suppressMissingDependenciesErrorTextNode);
+		referenceNode.appendChild(suppressMissingDependenciesErrorNode);
+
+		if ((<DacpacReferenceProjectEntry>entry).databaseSqlCmdVariable) {
+			const databaseSqlCmdVariableElement = this.projFileXmlDoc.createElement(constants.DatabaseSqlCmdVariable);
+			const databaseSqlCmdVariableTextNode = this.projFileXmlDoc.createTextNode((<DacpacReferenceProjectEntry>entry).databaseSqlCmdVariable);
+			databaseSqlCmdVariableElement.appendChild(databaseSqlCmdVariableTextNode);
+			referenceNode.appendChild(databaseSqlCmdVariableElement);
+
+			// add SQLCMD variable
+			this.addSqlCmdVariable((<DacpacReferenceProjectEntry>entry).databaseSqlCmdVariable!, (<DacpacReferenceProjectEntry>entry).databaseName);
+		} else if (entry.databaseVariableLiteralValue) {
+			const databaseVariableLiteralValueElement = this.projFileXmlDoc.createElement(constants.DatabaseVariableLiteralValue);
+			const databaseTextNode = this.projFileXmlDoc.createTextNode(entry.databaseVariableLiteralValue);
+			databaseVariableLiteralValueElement.appendChild(databaseTextNode);
+			referenceNode.appendChild(databaseVariableLiteralValueElement);
+		}
+
+		if ((<DacpacReferenceProjectEntry>entry).serverSqlCmdVariable) {
+			const serverSqlCmdVariableElement = this.projFileXmlDoc.createElement(constants.ServerSqlCmdVariable);
+			const serverSqlCmdVariableTextNode = this.projFileXmlDoc.createTextNode((<DacpacReferenceProjectEntry>entry).serverSqlCmdVariable);
+			serverSqlCmdVariableElement.appendChild(serverSqlCmdVariableTextNode);
+			referenceNode.appendChild(serverSqlCmdVariableElement);
+
+			// add SQLCMD variable
+			this.addSqlCmdVariable((<DacpacReferenceProjectEntry>entry).serverSqlCmdVariable!, (<DacpacReferenceProjectEntry>entry).serverName!);
+		}
+	}
+
+	private addProjectReferenceChildren(referenceNode: any, entry: SqlProjectReferenceProjectEntry): void {
+		// project name
+		const nameElement = this.projFileXmlDoc.createElement(constants.Name);
+		const nameTextNode = this.projFileXmlDoc.createTextNode(entry.projectName);
+		nameElement.appendChild(nameTextNode);
+		referenceNode.appendChild(nameElement);
+
+		// add project guid
+		const projectElement = this.projFileXmlDoc.createElement(constants.Project);
+		const projectGuidTextNode = this.projFileXmlDoc.createTextNode(entry.projectGuid);
+		projectElement.appendChild(projectGuidTextNode);
+		referenceNode.appendChild(projectElement);
+
+		// add Private (not sure what this is for)
+		const privateElement = this.projFileXmlDoc.createElement(constants.Private);
+		const privateTextNode = this.projFileXmlDoc.createTextNode(constants.True);
+		privateElement.appendChild(privateTextNode);
+		referenceNode.appendChild(privateElement);
+	}
+
+	public addSqlCmdVariableToProjFile(entry: SqlCmdVariableProjectEntry): void {
+		// Remove any entries with the same variable name. It'll be replaced with a new one
+		this.removeFromProjFile(entry);
+
+		const sqlCmdVariableNode = this.projFileXmlDoc.createElement(constants.SqlCmdVariable);
+		sqlCmdVariableNode.setAttribute(constants.Include, entry.variableName);
+		this.addSqlCmdVariableChildren(sqlCmdVariableNode, entry);
+		this.findOrCreateItemGroup(constants.SqlCmdVariable).appendChild(sqlCmdVariableNode);
+
+		// add to the project's loaded sqlcmd variables
+		this.sqlCmdVariables[entry.variableName] = <string>entry.defaultValue;
+	}
+
+	private addSqlCmdVariableChildren(sqlCmdVariableNode: any, entry: SqlCmdVariableProjectEntry): void {
+		// add default value
+		const defaultValueNode = this.projFileXmlDoc.createElement(constants.DefaultValue);
+		const defaultValueText = this.projFileXmlDoc.createTextNode(entry.defaultValue);
+		defaultValueNode.appendChild(defaultValueText);
+		sqlCmdVariableNode.appendChild(defaultValueNode);
+
+		// add value node which is in the format $(SqlCmdVar__x)
+		const valueNode = this.projFileXmlDoc.createElement(constants.Value);
+		const valueText = this.projFileXmlDoc.createTextNode(`$(SqlCmdVar__${this.getNextSqlCmdVariableCounter()})`);
+		valueNode.appendChild(valueText);
+		sqlCmdVariableNode.appendChild(valueNode);
+	}
+
+	/**
+	 * returns the next number that should be used for the new SqlCmd Variable. Old numbers don't get reused even if a SqlCmd Variable
+	 * gets removed from the project
+	 */
+	private getNextSqlCmdVariableCounter(): number {
+		const sqlCmdVariableNodes = this.projFileXmlDoc.documentElement.getElementsByTagName(constants.SqlCmdVariable);
+		let highestNumber = 0;
+
+		for (let i = 0; i < sqlCmdVariableNodes.length; i++) {
+			const value: string = sqlCmdVariableNodes[i].getElementsByTagName(constants.Value)[0].childNodes[0].nodeValue;
+			const number = parseInt(value.substring(13).slice(0, -1)); // want the number x in $(SqlCmdVar__x)
+
+			// incremement the counter if there's already a variable with the same number or greater
+			if (number > highestNumber) {
+				highestNumber = number;
+			}
+		}
+
+		return highestNumber + 1;
 	}
 
 	private async updateImportedTargetsToProjFile(condition: string, projectAttributeVal: string, oldImportNode?: any): Promise<any> {
@@ -341,7 +699,8 @@ export class Project {
 	public containsSSDTOnlySystemDatabaseReferences(): boolean {
 		for (let r = 0; r < this.projFileXmlDoc.documentElement.getElementsByTagName(constants.ArtifactReference).length; r++) {
 			const currentNode = this.projFileXmlDoc.documentElement.getElementsByTagName(constants.ArtifactReference)[r];
-			if (!currentNode.getAttribute(constants.NetCoreCondition) && currentNode.getAttribute(constants.Include).includes(constants.DacpacRootPath)) {
+			if (currentNode.getAttribute(constants.Condition) !== constants.NetCoreCondition && currentNode.getAttribute(constants.Condition) !== constants.NotNetCoreCondition
+				&& currentNode.getAttribute(constants.Include).includes(constants.DacpacRootPath)) {
 				return true;
 			}
 		}
@@ -349,13 +708,26 @@ export class Project {
 		return false;
 	}
 
+	/**
+	 * Update system db references to have the ADS and SSDT paths to the system dacpacs
+	 */
 	public async updateSystemDatabaseReferencesInProjFile(): Promise<void> {
 		// find all system database references
 		for (let r = 0; r < this.projFileXmlDoc.documentElement.getElementsByTagName(constants.ArtifactReference).length; r++) {
 			const currentNode = this.projFileXmlDoc.documentElement.getElementsByTagName(constants.ArtifactReference)[r];
 			if (!currentNode.getAttribute(constants.Condition) && currentNode.getAttribute(constants.Include).includes(constants.DacpacRootPath)) {
 				// get name of system database
-				const name = currentNode.getAttribute(constants.Include).includes(constants.master) ? SystemDatabase.master : SystemDatabase.msdb;
+				const systemDb = currentNode.getAttribute(constants.Include).includes(constants.master) ? SystemDatabase.master : SystemDatabase.msdb;
+
+				// get name
+				const nameNodes = currentNode.getElementsByTagName(constants.DatabaseVariableLiteralValue);
+				const databaseVariableName = nameNodes[0].childNodes[0]?.nodeValue;
+
+				// get suppressMissingDependenciesErrors
+				const suppressMissingDependenciesErrorNode = currentNode.getElementsByTagName(constants.SuppressMissingDependenciesErrors);
+				const suppressMissingDependences = suppressMissingDependenciesErrorNode[0].childNodes[0].nodeValue === true ?? false;
+
+				// remove this node
 				this.projFileXmlDoc.documentElement.removeChild(currentNode);
 
 				// delete ItemGroup if there aren't any other children
@@ -364,24 +736,51 @@ export class Project {
 				}
 
 				// remove from database references because it'll get added again later
-				this.databaseReferences.splice(this.databaseReferences.findIndex(n => n === (name ? constants.master : constants.msdb)), 1);
+				this.databaseReferences.splice(this.databaseReferences.findIndex(n => n.databaseName === (systemDb === SystemDatabase.master ? constants.master : constants.msdb)), 1);
 
-				await this.addSystemDatabaseReference(name);
+				await this.addSystemDatabaseReference({ databaseName: databaseVariableName, systemDb: systemDb, suppressMissingDependenciesErrors: suppressMissingDependences });
 			}
 		}
 	}
 
-	private async addToProjFile(entry: ProjectEntry) {
+	private async addToProjFile(entry: ProjectEntry, xmlTag?: string) {
 		switch (entry.type) {
 			case EntryType.File:
-				this.addFileToProjFile(entry.relativePath);
+				this.addFileToProjFile((<FileProjectEntry>entry).relativePath, xmlTag ? xmlTag : constants.Build);
 				break;
 			case EntryType.Folder:
-				this.addFolderToProjFile(entry.relativePath);
+				this.addFolderToProjFile((<FileProjectEntry>entry).relativePath);
 				break;
 			case EntryType.DatabaseReference:
-				this.addDatabaseReferenceToProjFile(<DatabaseReferenceProjectEntry>entry);
+				this.addDatabaseReferenceToProjFile(<IDatabaseReferenceProjectEntry>entry);
+				break;
+			case EntryType.SqlCmdVariable:
+				this.addSqlCmdVariableToProjFile(<SqlCmdVariableProjectEntry>entry);
 				break; // not required but adding so that we dont miss when we add new items
+		}
+
+		await this.serializeToProjFile(this.projFileXmlDoc);
+	}
+
+	private async removeFromProjFile(entries: ProjectEntry | ProjectEntry[]) {
+		if (entries instanceof ProjectEntry) {
+			entries = [entries];
+		}
+
+		for (const entry of entries) {
+			switch (entry.type) {
+				case EntryType.File:
+					this.removeFileFromProjFile((<FileProjectEntry>entry).relativePath);
+					break;
+				case EntryType.Folder:
+					this.removeFolderFromProjFile((<FileProjectEntry>entry).relativePath);
+					break;
+				case EntryType.DatabaseReference:
+					break;
+				case EntryType.SqlCmdVariable:
+					this.removeSqlCmdVariableFromProjFile((<SqlCmdVariableProjectEntry>entry).variableName);
+					break; // not required but adding so that we dont miss when we add new items
+			}
 		}
 
 		await this.serializeToProjFile(this.projFileXmlDoc);
@@ -421,43 +820,140 @@ export class Project {
 /**
  * Represents an entry in a project file
  */
-export class ProjectEntry {
+export abstract class ProjectEntry {
+	type: EntryType;
+
+	constructor(type: EntryType) {
+		this.type = type;
+	}
+}
+
+export class FileProjectEntry extends ProjectEntry {
 	/**
 	 * Absolute file system URI
 	 */
 	fsUri: Uri;
 	relativePath: string;
-	type: EntryType;
 
 	constructor(uri: Uri, relativePath: string, type: EntryType) {
+		super(type);
 		this.fsUri = uri;
 		this.relativePath = relativePath;
-		this.type = type;
 	}
 
 	public toString(): string {
 		return this.fsUri.path;
+	}
+
+	public pathForSqlProj(): string {
+		return utils.convertSlashesForSqlProj(this.fsUri.fsPath);
 	}
 }
 
 /**
  * Represents a database reference entry in a project file
  */
-class DatabaseReferenceProjectEntry extends ProjectEntry {
-	constructor(uri: Uri, public databaseLocation: DatabaseReferenceLocation, public isSystemDatabase: boolean, public name?: string) {
+
+export interface IDatabaseReferenceProjectEntry extends FileProjectEntry {
+	databaseName: string;
+	databaseVariableLiteralValue?: string;
+	suppressMissingDependenciesErrors: boolean;
+}
+
+export class DacpacReferenceProjectEntry extends FileProjectEntry implements IDatabaseReferenceProjectEntry {
+	databaseVariableLiteralValue?: string;
+	databaseSqlCmdVariable?: string;
+	serverName?: string;
+	serverSqlCmdVariable?: string;
+	suppressMissingDependenciesErrors: boolean;
+
+	constructor(settings: IDacpacReferenceSettings) {
+		super(settings.dacpacFileLocation, '', EntryType.DatabaseReference);
+		this.databaseSqlCmdVariable = settings.databaseVariable;
+		this.databaseVariableLiteralValue = settings.databaseName;
+		this.serverName = settings.serverName;
+		this.serverSqlCmdVariable = settings.serverVariable;
+		this.suppressMissingDependenciesErrors = settings.suppressMissingDependenciesErrors;
+	}
+
+	/**
+	 * File name that gets displayed in the project tree
+	 */
+	public get databaseName(): string {
+		return path.parse(utils.getPlatformSafeFileEntryPath(this.fsUri.fsPath)).name;
+	}
+}
+
+class SystemDatabaseReferenceProjectEntry extends FileProjectEntry implements IDatabaseReferenceProjectEntry {
+	constructor(uri: Uri, public ssdtUri: Uri, public databaseVariableLiteralValue: string, public suppressMissingDependenciesErrors: boolean) {
 		super(uri, '', EntryType.DatabaseReference);
+	}
+
+	/**
+	 * File name that gets displayed in the project tree
+	 */
+	public get databaseName(): string {
+		return path.parse(utils.getPlatformSafeFileEntryPath(this.fsUri.fsPath)).name;
+	}
+
+	public pathForSqlProj(): string {
+		// need to remove the leading slash for system database path for build to work on Windows
+		return utils.convertSlashesForSqlProj(this.fsUri.path.substring(1));
+	}
+
+	public ssdtPathForSqlProj(): string {
+		// need to remove the leading slash for system database path for build to work on Windows
+		return utils.convertSlashesForSqlProj(this.ssdtUri.path.substring(1));
+	}
+}
+
+export class SqlProjectReferenceProjectEntry extends FileProjectEntry implements IDatabaseReferenceProjectEntry {
+	projectName: string;
+	projectGuid: string;
+	databaseVariableLiteralValue?: string;
+	databaseSqlCmdVariable?: string;
+	serverName?: string;
+	serverSqlCmdVariable?: string;
+	suppressMissingDependenciesErrors: boolean;
+
+	constructor(settings: IProjectReferenceSettings) {
+		super(settings.projectRelativePath!, '', EntryType.DatabaseReference);
+		this.projectName = settings.projectName;
+		this.projectGuid = settings.projectGuid;
+		this.databaseSqlCmdVariable = settings.databaseVariable;
+		this.databaseVariableLiteralValue = settings.databaseName;
+		this.serverName = settings.serverName;
+		this.serverSqlCmdVariable = settings.serverVariable;
+		this.suppressMissingDependenciesErrors = settings.suppressMissingDependenciesErrors;
+	}
+
+	public get databaseName(): string {
+		return this.projectName;
+	}
+
+	public pathForSqlProj(): string {
+		// need to remove the leading slash from path for build to work on Windows
+		return utils.convertSlashesForSqlProj(this.fsUri.path.substring(1));
+	}
+}
+
+export class SqlCmdVariableProjectEntry extends ProjectEntry {
+	constructor(public variableName: string, public defaultValue: string) {
+		super(EntryType.SqlCmdVariable);
 	}
 }
 
 export enum EntryType {
 	File,
 	Folder,
-	DatabaseReference
+	DatabaseReference,
+	SqlCmdVariable
 }
 
 export enum DatabaseReferenceLocation {
 	sameDatabase,
-	differentDatabaseSameServer
+	differentDatabaseSameServer,
+	differentDatabaseDifferentServer
 }
 
 export enum TargetPlatform {
@@ -475,3 +971,5 @@ export enum SystemDatabase {
 	master,
 	msdb
 }
+
+export const reservedProjectFolders = ['Properties', 'Data Sources', 'Database References'];

@@ -61,7 +61,7 @@ export interface IWorkbenchProductIconTheme extends IWorkbenchTheme {
 
 
 export interface IWorkbenchThemeService extends IThemeService {
-	_serviceBrand: undefined;
+	readonly _serviceBrand: undefined;
 	setColorTheme(themeId: string | undefined, settingsTarget: ConfigurationTarget | undefined | 'auto'): Promise<IWorkbenchColorTheme | null>;
 	getColorTheme(): IWorkbenchColorTheme;
 	getColorThemes(): Promise<IWorkbenchColorTheme[]>;
@@ -78,6 +78,7 @@ export interface IWorkbenchThemeService extends IThemeService {
 	getProductIconThemes(): Promise<IWorkbenchProductIconTheme[]>;
 	onDidProductIconThemeChange: Event<IWorkbenchProductIconTheme>;
 
+	setOSHighContrast(highContrast: boolean): void;
 }
 
 export interface IColorCustomizations {

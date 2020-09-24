@@ -4,7 +4,8 @@
  *--------------------------------------------------------------------------------------------*/
 
 import 'vs/css!./media/editordroptarget';
-import { LocalSelectionTransfer, DraggedEditorIdentifier, ResourcesDropHandler, DraggedEditorGroupIdentifier, DragAndDropObserver, containsDragType } from 'vs/workbench/browser/dnd';
+// {{SQL CARBON EDIT}}
+import { LocalSelectionTransfer, DraggedEditorIdentifier, ResourcesDropHandler, DraggedEditorGroupIdentifier, DragAndDropObserver, containsDragType, extractResources } from 'vs/workbench/browser/dnd';
 import { addDisposableListener, EventType, EventHelper, isAncestor, toggleClass, addClass, removeClass } from 'vs/base/browser/dom';
 import { IEditorGroupsAccessor, EDITOR_TITLE_HEIGHT, IEditorGroupView, getActiveTextEditorOptions } from 'vs/workbench/browser/parts/editor/editor';
 import { EDITOR_DRAG_AND_DROP_BACKGROUND } from 'vs/workbench/common/theme';
@@ -12,7 +13,7 @@ import { IThemeService, Themable } from 'vs/platform/theme/common/themeService';
 import { activeContrastBorder } from 'vs/platform/theme/common/colorRegistry';
 import { IEditorIdentifier, EditorInput, EditorOptions } from 'vs/workbench/common/editor';
 import { isMacintosh, isWeb } from 'vs/base/common/platform';
-import { GroupDirection, MergeGroupMode } from 'vs/workbench/services/editor/common/editorGroupsService';
+import { GroupDirection, MergeGroupMode, OpenEditorContext } from 'vs/workbench/services/editor/common/editorGroupsService';
 import { toDisposable } from 'vs/base/common/lifecycle';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
 import { RunOnceScheduler } from 'vs/base/common/async';
@@ -25,6 +26,10 @@ import { IEditorService } from 'vs/workbench/services/editor/common/editorServic
 import { assertIsDefined, assertAllDefined } from 'vs/base/common/types';
 import { INotificationService } from 'vs/platform/notification/common/notification';
 import { localize } from 'vs/nls';
+// {{SQL CARBON EDIT}}
+import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
+import { SnippetController2 } from 'vs/editor/contrib/snippet/snippetController2';
+import { supportsNodeNameDrop } from 'sql/workbench/services/objectExplorer/browser/dragAndDropController';
 
 interface IDropOperation {
 	splitDirection?: GroupDirection;
@@ -277,13 +282,13 @@ class DropOverlay extends Themable {
 						pinned: true,										// always pin dropped editor
 						sticky: sourceGroup.isSticky(draggedEditor.editor)	// preserve sticky state
 					}));
-					targetGroup.openEditor(draggedEditor.editor, options);
+					const copyEditor = this.isCopyOperation(event, draggedEditor);
+					targetGroup.openEditor(draggedEditor.editor, options, copyEditor ? OpenEditorContext.COPY_EDITOR : OpenEditorContext.MOVE_EDITOR);
 
 					// Ensure target has focus
 					targetGroup.focus();
 
 					// Close in source group unless we copy
-					const copyEditor = this.isCopyOperation(event, draggedEditor);
 					if (!copyEditor) {
 						sourceGroup.closeEditor(draggedEditor.editor);
 					}
@@ -346,6 +351,21 @@ class DropOverlay extends Themable {
 		// Check for URI transfer
 		else {
 			const dropHandler = this.instantiationService.createInstance(ResourcesDropHandler, { allowWorkspaceOpen: true /* open workspace instead of file if dropped */ });
+
+			// {{SQL CARBON EDIT}}
+			const untitledOrFileResources = extractResources(event);
+			if (!untitledOrFileResources.length) {
+				return;
+			}
+
+			// {{SQL CARBON EDIT}}
+			const editor = this.editorService.activeTextEditorControl as ICodeEditor;
+			if (supportsNodeNameDrop(untitledOrFileResources[0].resource.scheme) || untitledOrFileResources[0].resource.scheme === 'Folder') {
+				SnippetController2.get(editor).insert(untitledOrFileResources[0].resource.query);
+				editor.focus();
+				return;
+			}
+
 			dropHandler.handleDrop(event, () => ensureTargetGroup(), targetGroup => {
 				if (targetGroup) {
 					targetGroup.focus();
@@ -530,8 +550,12 @@ class DropOverlay extends Themable {
 	}
 }
 
-export interface EditorDropTargetDelegate {
-	groupContainsPredicate?(groupView: IEditorGroupView): boolean;
+export interface IEditorDropTargetDelegate {
+
+	/**
+	 * A helper to figure out if the drop target contains the provided group.
+	 */
+	containsGroup?(groupView: IEditorGroupView): boolean;
 }
 
 export class EditorDropTarget extends Themable {
@@ -546,7 +570,7 @@ export class EditorDropTarget extends Themable {
 	constructor(
 		private accessor: IEditorGroupsAccessor,
 		private container: HTMLElement,
-		private readonly delegate: EditorDropTargetDelegate,
+		private readonly delegate: IEditorDropTargetDelegate,
 		@IThemeService themeService: IThemeService,
 		@IInstantiationService private readonly instantiationService: IInstantiationService
 	) {
@@ -620,7 +644,8 @@ export class EditorDropTarget extends Themable {
 
 	private findTargetGroupView(child: HTMLElement): IEditorGroupView | undefined {
 		const groups = this.accessor.groups;
-		return groups.find(groupView => isAncestor(child, groupView.element) || this.delegate.groupContainsPredicate?.(groupView));
+
+		return groups.find(groupView => isAncestor(child, groupView.element) || this.delegate.containsGroup?.(groupView));
 	}
 
 	private updateContainer(isDraggedOver: boolean): void {

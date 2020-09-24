@@ -19,13 +19,15 @@
 			"timeout": 30000,
 			"port": 5870,
 			"outFiles": [
-				"${workspaceFolder}/out/**/*.js"
+				"${workspaceFolder}/out/**/*.js",
+				"${workspaceFolder}/extensions/*/out/**/*.js"
 			]
 		},
 		{
 			"type": "pwa-chrome",
 			"request": "attach",
 			"name": "Attach to Shared Process",
+			"timeout": 30000,
 			"port": 9222,
 			"urlFilter": "*sharedProcess.html*",
 			"presentation": {
@@ -57,6 +59,7 @@
 			"type": "node",
 			"request": "attach",
 			"name": "Attach to Main Process",
+			"timeout": 30000,
 			"port": 5875,
 			"outFiles": [
 				"${workspaceFolder}/out/**/*.js"
@@ -66,10 +69,9 @@
 			}
 		},
 		{
-			"type": "pwa-chrome",
+			"type": "chrome",
 			"request": "attach",
 			"name": "Attach to azuredatastudio",
-			"timeout": 50000,
 			"port": 9222
 		},
 		{
@@ -88,28 +90,32 @@
 			"port": 9222,
 			"timeout": 20000,
 			"env": {
-				"VSCODE_EXTHOST_WILL_SEND_SOCKET": null
+				"VSCODE_EXTHOST_WILL_SEND_SOCKET": null,
+				"VSCODE_SKIP_PRELAUNCH": "1"
 			},
-			"breakOnLoad": false,
+			"cleanUp": "wholeBrowser",
 			"urlFilter": "*workbench.html*",
 			"runtimeArgs": [
 				"--inspect=5875",
 				"--no-cached-data",
 			],
 			"webRoot": "${workspaceFolder}",
-			// Settings for js-debug:
+			"cascadeTerminateToConfigurations": [
+				"Attach to Extension Host"
+			],
 			"userDataDir": false,
 			"pauseForSourceMap": false,
 			"outFiles": [
 				"${workspaceFolder}/out/**/*.js"
 			],
-			"browserLaunchLocation": "workspace"
+			"browserLaunchLocation": "workspace",
+			"preLaunchTask": "Ensure Prelaunch Dependencies",
 		},
 		{
-			"type": "chrome",
+			"type": "node",
 			"request": "launch",
 			"name": "Launch ADS (Web) (TBD)",
-			"program": "${workspaceFolder}/scripts/code-web.js",
+			"program": "${workspaceFolder}/resources/web/code-web.js",
 			"presentation": {
 				"group": "0_vscode",
 				"order": 2
@@ -139,6 +145,18 @@
 			"request": "launch",
 			"name": "Launch ADS (Web, Chrome) (TBD)",
 			"url": "http://localhost:8080",
+			"preLaunchTask": "Run web",
+			"presentation": {
+				"group": "0_vscode",
+				"order": 3
+			}
+		},
+		{
+			"type": "pwa-msedge",
+			"request": "launch",
+			"name": "VS Code (Web, Edge)",
+			"url": "http://localhost:8080",
+			"pauseForSourceMap": false,
 			"preLaunchTask": "Run web",
 			"presentation": {
 				"group": "0_vscode",
@@ -251,12 +269,14 @@
 		},
 		{
 			"name": "Azure Data Studio",
+			"stopAll": true,
 			"configurations": [
 				"Launch azuredatastudio",
 				"Attach to Main Process",
 				"Attach to Extension Host",
 				"Attach to Shared Process",
 			],
+			"preLaunchTask": "Ensure Prelaunch Dependencies",
 			"presentation": {
 				"group": "0_vscode",
 				"order": 1

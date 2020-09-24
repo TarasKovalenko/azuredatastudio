@@ -25,10 +25,15 @@ import { IModelContentChangedEvent } from 'vs/editor/common/model/textModelEvent
 import { firstIndex, find } from 'vs/base/common/arrays';
 import { HideInputTag } from 'sql/platform/notebooks/common/outputRegistry';
 import { FutureInternal, notebookConstants } from 'sql/workbench/services/notebook/browser/interfaces';
+import { ICommandService } from 'vs/platform/commands/common/commands';
+import { tryMatchCellMagic, extractCellMagicCommandPlusArgs } from 'sql/workbench/services/notebook/browser/utils';
+import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
+import { Disposable } from 'vs/base/common/lifecycle';
 
 let modelId = 0;
+const ads_execute_command = 'ads_execute_command';
 
-export class CellModel implements ICellModel {
+export class CellModel extends Disposable implements ICellModel {
 	public id: string;
 
 	private _cellType: nb.CellType;
@@ -56,11 +61,22 @@ export class CellModel implements ICellModel {
 	private _isCollapsed: boolean;
 	private _onCollapseStateChanged = new Emitter<boolean>();
 	private _modelContentChangedEvent: IModelContentChangedEvent;
+	private _onCellPreviewChanged = new Emitter<boolean>();
+	private _onCellMarkdownChanged = new Emitter<boolean>();
+	private _isCommandExecutionSettingEnabled: boolean = false;
+	private _showPreview: boolean = true;
+	private _showMarkdown: boolean = false;
+	private _cellSourceChanged: boolean = false;
+	private _gridDataConversionComplete: Promise<void>[] = [];
+	private _defaultToWYSIWYG: boolean;
 
 	constructor(cellData: nb.ICellContents,
 		private _options: ICellModelOptions,
-		@optional(INotebookService) private _notebookService?: INotebookService
+		@optional(INotebookService) private _notebookService?: INotebookService,
+		@optional(ICommandService) private _commandService?: ICommandService,
+		@optional(IConfigurationService) private _configurationService?: IConfigurationService
 	) {
+		super();
 		this.id = `${modelId++}`;
 		if (cellData) {
 			// Read in contents if available
@@ -80,6 +96,7 @@ export class CellModel implements ICellModel {
 		// if the fromJson() method was already called and _cellGuid was previously set, don't generate another UUID unnecessarily
 		this._cellGuid = this._cellGuid || generateUuid();
 		this.createUri();
+		this.populatePropertiesFromSettings();
 	}
 
 	public equals(other: ICellModel) {
@@ -143,6 +160,9 @@ export class CellModel implements ICellModel {
 
 	public set isEditMode(isEditMode: boolean) {
 		this._isEditMode = isEditMode;
+		if (this._isEditMode) {
+			this.showMarkdown = !this._defaultToWYSIWYG;
+		}
 		this._onCellModeChanged.fire(this._isEditMode);
 		// Note: this does not require a notebook update as it does not change overall state
 	}
@@ -205,6 +225,14 @@ export class CellModel implements ICellModel {
 		return this._cellType;
 	}
 
+	public set cellType(type: CellType) {
+		if (type !== this._cellType) {
+			this._cellType = type;
+			// Regardless, get rid of outputs; this matches Jupyter behavior
+			this._outputs = [];
+		}
+	}
+
 	public get source(): string | string[] {
 		return this._source;
 	}
@@ -214,6 +242,7 @@ export class CellModel implements ICellModel {
 		if (this._source !== newSource) {
 			this._source = newSource;
 			this.sendChangeToNotebook(NotebookChangeType.CellSourceUpdated);
+			this.cellSourceChanged = true;
 		}
 		this._modelContentChangedEvent = undefined;
 	}
@@ -275,6 +304,43 @@ export class CellModel implements ICellModel {
 		this._stdInVisible = val;
 	}
 
+	public get showPreview(): boolean {
+		return this._showPreview;
+	}
+
+	public set showPreview(val: boolean) {
+		this._showPreview = val;
+		this._onCellPreviewChanged.fire(this._showPreview);
+	}
+
+	public get showMarkdown(): boolean {
+		return this._showMarkdown;
+	}
+
+	public set showMarkdown(val: boolean) {
+		this._showMarkdown = val;
+		this._onCellMarkdownChanged.fire(this._showMarkdown);
+	}
+
+	public get defaultToWYSIWYG(): boolean {
+		return this._defaultToWYSIWYG;
+	}
+
+	public get cellSourceChanged(): boolean {
+		return this._cellSourceChanged;
+	}
+	public set cellSourceChanged(val: boolean) {
+		this._cellSourceChanged = val;
+	}
+
+	public get onCellPreviewModeChanged(): Event<boolean> {
+		return this._onCellPreviewChanged.event;
+	}
+
+	public get onCellMarkdownModeChanged(): Event<boolean> {
+		return this._onCellMarkdownChanged.event;
+	}
+
 	private notifyExecutionComplete(): void {
 		if (this._notebookService) {
 			this._notebookService.serializeNotebookStateChange(this.notebookModel.notebookUri, NotebookChangeType.CellExecuted, this)
@@ -295,6 +361,8 @@ export class CellModel implements ICellModel {
 
 	public async runCell(notificationService?: INotificationService, connectionManagementService?: IConnectionManagementService): Promise<boolean> {
 		try {
+			// Clear grid data conversion promises from previous execution results
+			this._gridDataConversionComplete = [];
 			if (!this.active && this !== this.notebookModel.activeCell) {
 				this.notebookModel.updateActiveCell(this);
 				this.active = true;
@@ -336,19 +404,42 @@ export class CellModel implements ICellModel {
 
 					// requestExecute expects a string for the code parameter
 					content = Array.isArray(content) ? content.join('') : content;
-					const future = kernel.requestExecute({
-						code: content,
-						stop_on_error: true
-					}, false);
-					this.setFuture(future as FutureInternal);
-					this.fireExecutionStateChanged();
-					// For now, await future completion. Later we should just track and handle cancellation based on model notifications
-					let result: nb.IExecuteReplyMsg = <nb.IExecuteReplyMsg><any>await future.done;
-					if (result && result.content) {
-						this.executionCount = result.content.execution_count;
-						if (result.content.status !== 'ok') {
-							// TODO track error state
-							return false;
+					if (tryMatchCellMagic(this.source[0]) !== ads_execute_command || !this._isCommandExecutionSettingEnabled) {
+						const future = kernel.requestExecute({
+							code: content,
+							stop_on_error: true
+						}, false, this._cellUri.toString());
+						this.setFuture(future as FutureInternal);
+						this.fireExecutionStateChanged();
+						// For now, await future completion. Later we should just track and handle cancellation based on model notifications
+						let result: nb.IExecuteReplyMsg = <nb.IExecuteReplyMsg><any>await future.done;
+						if (result && result.content) {
+							this.executionCount = result.content.execution_count;
+							if (result.content.status !== 'ok') {
+								// TODO track error state
+								return false;
+							}
+						}
+					} else {
+						let result = extractCellMagicCommandPlusArgs(this._source[0], ads_execute_command);
+						// Similar to the markdown renderer, we should not allow downloadResource here
+						if (result?.commandId !== '_workbench.downloadResource') {
+							try {
+								// Need to reset outputs here (kernels do this on their own)
+								this._outputs = [];
+								let commandExecuted = this._commandService?.executeCommand(result.commandId, result.args);
+								// This will ensure that the run button turns into a stop button
+								this.fireExecutionStateChanged();
+								await commandExecuted;
+								// For save files, if we output a message after saving the file, the file becomes dirty again.
+								// Special casing this to avoid this particular issue.
+								if (result?.commandId !== 'workbench.action.files.saveFiles') {
+									this.handleIOPub(this.toIOPubMessage(false));
+								}
+							} catch (error) {
+								this.handleIOPub(this.toIOPubMessage(true, error?.message));
+								return false;
+							}
 						}
 					}
 				}
@@ -457,6 +548,25 @@ export class CellModel implements ICellModel {
 		return this._outputs;
 	}
 
+	public updateOutputData(batchId: number, id: number, data: any) {
+		for (let i = 0; i < this._outputs.length; i++) {
+			if (this._outputs[i].output_type === 'execute_result'
+				&& (<nb.IExecuteResult>this._outputs[i]).batchId === batchId
+				&& (<nb.IExecuteResult>this._outputs[i]).id === id) {
+				(<nb.IExecuteResult>this._outputs[i]).data = data;
+				break;
+			}
+		}
+	}
+
+	public get gridDataConversionComplete(): Promise<void> {
+		return Promise.all(this._gridDataConversionComplete).then();
+	}
+
+	public addGridDataConversionPromise(complete: Promise<void>): void {
+		this._gridDataConversionComplete.push(complete);
+	}
+
 	public get renderedOutputTextContent(): string[] {
 		return this._renderedOutputTextContent;
 	}
@@ -513,7 +623,22 @@ export class CellModel implements ICellModel {
 		if (output) {
 			// deletes transient node in the serialized JSON
 			delete output['transient'];
-			this._outputs.push(this.rewriteOutputUrls(output));
+			// display message outputs before grid outputs
+			if (output.output_type === 'display_data' && this._outputs.length > 0) {
+				let added = false;
+				for (let i = 0; i < this._outputs.length; i++) {
+					if (this._outputs[i].output_type === 'execute_result') {
+						this._outputs.splice(i, 0, this.rewriteOutputUrls(output));
+						added = true;
+						break;
+					}
+				}
+				if (!added) {
+					this._outputs.push(this.rewriteOutputUrls(output));
+				}
+			} else {
+				this._outputs.push(this.rewriteOutputUrls(output));
+			}
 			// Only scroll on 1st output being added
 			let shouldScroll = this._outputs.length === 1;
 			this.fireOutputsChanged(shouldScroll);
@@ -694,11 +819,56 @@ export class CellModel implements ICellModel {
 		return source;
 	}
 
+	// Create an iopub message to display either a display result or an error result,
+	// in order to be displayed as part of a cell's outputs
+	private toIOPubMessage(isError: boolean, message?: string): nb.IIOPubMessage {
+		return {
+			channel: 'iopub',
+			type: 'iopub',
+			header: <nb.IHeader>{
+				msg_id: undefined,
+				msg_type: isError ? 'error' : 'display_data'
+			},
+			content: isError ? <nb.IErrorResult>{
+				output_type: 'error',
+				evalue: message,
+				ename: '',
+				traceback: []
+			} : <nb.IDisplayResult>{
+				output_type: 'execute_result',
+				data: {
+					'text/html': localize('commandSuccessful', "Command executed successfully"),
+				}
+			},
+			metadata: undefined,
+			parent_header: undefined
+		};
+	}
+
 	// Dispose and set current future to undefined
 	private disposeFuture() {
 		if (this._future) {
 			this._future.dispose();
 		}
 		this._future = undefined;
+	}
+
+	private populatePropertiesFromSettings() {
+		if (this._configurationService) {
+			const enableWYSIWYGByDefaultKey = 'notebook.setRichTextViewByDefault';
+			this._defaultToWYSIWYG = this._configurationService.getValue(enableWYSIWYGByDefaultKey);
+			if (!this._defaultToWYSIWYG) {
+				this.showMarkdown = true;
+			}
+			const allowADSCommandsKey = 'notebook.allowAzureDataStudioCommands';
+			this._isCommandExecutionSettingEnabled = this._configurationService.getValue(allowADSCommandsKey);
+			this._register(this._configurationService.onDidChangeConfiguration(e => {
+				if (e.affectsConfiguration(allowADSCommandsKey)) {
+					this._isCommandExecutionSettingEnabled = this._configurationService.getValue(allowADSCommandsKey);
+				} else if (e.affectsConfiguration(enableWYSIWYGByDefaultKey)) {
+					this._defaultToWYSIWYG = this._configurationService.getValue(enableWYSIWYGByDefaultKey);
+				}
+			}));
+		}
 	}
 }

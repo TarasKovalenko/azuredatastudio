@@ -6,8 +6,8 @@
 import { localize } from 'vs/nls';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
 import { INotificationService } from 'vs/platform/notification/common/notification';
-import { Action, IAction } from 'vs/base/common/actions';
-import { ActionBar, Separator, ActionsOrientation } from 'vs/base/browser/ui/actionbar/actionbar';
+import { Action, IAction, Separator } from 'vs/base/common/actions';
+import { ActionBar, ActionsOrientation } from 'vs/base/browser/ui/actionbar/actionbar';
 import { CellActionBase, CellContext } from 'sql/workbench/contrib/notebook/browser/cellViews/codeActions';
 import { CellModel } from 'sql/workbench/services/notebook/browser/models/cell';
 import { CellTypes, CellType } from 'sql/workbench/services/notebook/common/contracts';
@@ -18,7 +18,9 @@ import Severity from 'vs/base/common/severity';
 import { INotebookService } from 'sql/workbench/services/notebook/browser/notebookService';
 import { IContextMenuService } from 'vs/platform/contextview/browser/contextView';
 import { StandardKeyboardEvent } from 'vs/base/browser/keyboardEvent';
+import { MoveDirection } from 'sql/workbench/services/notebook/browser/models/modelInterfaces';
 
+const moreActionsLabel = localize('moreActionsLabel', "More");
 
 export class EditCellAction extends ToggleableAction {
 	// Constants
@@ -65,6 +67,35 @@ export class EditCellAction extends ToggleableAction {
 	}
 }
 
+export class MoveCellAction extends CellActionBase {
+	constructor(
+		id: string,
+		cssClass: string,
+		label: string,
+		@INotificationService notificationService: INotificationService
+	) {
+		super(id, label, undefined, notificationService);
+		this._cssClass = cssClass;
+		this._tooltip = label;
+		this._label = '';
+	}
+
+	doRun(context: CellContext): Promise<void> {
+		let moveDirection = this._cssClass.includes('move-down') ? MoveDirection.Down : MoveDirection.Up;
+		try {
+			context.model.moveCell(context.cell, moveDirection);
+		} catch (error) {
+			let message = getErrorMessage(error);
+
+			this.notificationService.notify({
+				severity: Severity.Error,
+				message: message
+			});
+		}
+		return Promise.resolve();
+	}
+}
+
 export class DeleteCellAction extends CellActionBase {
 	constructor(
 		id: string,
@@ -101,14 +132,16 @@ export class CellToggleMoreActions {
 		@IInstantiationService private instantiationService: IInstantiationService
 	) {
 		this._actions.push(
-			instantiationService.createInstance(RunCellsAction, 'runAllBefore', localize('runAllBefore', "Run Cells Before"), false),
-			instantiationService.createInstance(RunCellsAction, 'runAllAfter', localize('runAllAfter', "Run Cells After"), true),
+			instantiationService.createInstance(ConvertCellAction, 'convertCell', localize('convertCell', "Convert Cell")),
 			new Separator(),
-			instantiationService.createInstance(AddCellFromContextAction, 'codeBefore', localize('codeBefore', "Insert Code Before"), CellTypes.Code, false),
-			instantiationService.createInstance(AddCellFromContextAction, 'codeAfter', localize('codeAfter', "Insert Code After"), CellTypes.Code, true),
+			instantiationService.createInstance(RunCellsAction, 'runAllAbove', localize('runAllAbove', "Run Cells Above"), false),
+			instantiationService.createInstance(RunCellsAction, 'runAllBelow', localize('runAllBelow', "Run Cells Below"), true),
 			new Separator(),
-			instantiationService.createInstance(AddCellFromContextAction, 'markdownBefore', localize('markdownBefore', "Insert Text Before"), CellTypes.Markdown, false),
-			instantiationService.createInstance(AddCellFromContextAction, 'markdownAfter', localize('markdownAfter', "Insert Text After"), CellTypes.Markdown, true),
+			instantiationService.createInstance(AddCellFromContextAction, 'codeAbove', localize('codeAbove', "Insert Code Above"), CellTypes.Code, false),
+			instantiationService.createInstance(AddCellFromContextAction, 'codeBelow', localize('codeBelow', "Insert Code Below"), CellTypes.Code, true),
+			new Separator(),
+			instantiationService.createInstance(AddCellFromContextAction, 'markdownAbove', localize('markdownAbove', "Insert Text Above"), CellTypes.Markdown, false),
+			instantiationService.createInstance(AddCellFromContextAction, 'markdownBelow', localize('markdownBelow', "Insert Text Below"), CellTypes.Markdown, true),
 			new Separator(),
 			instantiationService.createInstance(CollapseCellAction, 'collapseCell', localize('collapseCell', "Collapse Cell"), true),
 			instantiationService.createInstance(CollapseCellAction, 'expandCell', localize('expandCell', "Expand Cell"), false),
@@ -118,37 +151,61 @@ export class CellToggleMoreActions {
 	}
 
 	public onInit(elementRef: HTMLElement, context: CellContext) {
-		this._moreActionsElement = <HTMLElement>elementRef;
+		this._moreActionsElement = elementRef;
+		this._moreActionsElement.setAttribute('aria-haspopup', 'menu');
 		if (this._moreActionsElement.childNodes.length > 0) {
 			this._moreActionsElement.removeChild(this._moreActionsElement.childNodes[0]);
 		}
-		this._moreActions = new ActionBar(this._moreActionsElement, { orientation: ActionsOrientation.VERTICAL });
+		this._moreActions = new ActionBar(this._moreActionsElement, { orientation: ActionsOrientation.VERTICAL, ariaLabel: moreActionsLabel });
 		this._moreActions.context = { target: this._moreActionsElement };
 		let validActions = this._actions.filter(a => a instanceof Separator || a instanceof CellActionBase && a.canRun(context));
-		this.removeDuplicatedAndStartingSeparators(validActions);
+		removeDuplicatedAndStartingSeparators(validActions);
 		this._moreActions.push(this.instantiationService.createInstance(ToggleMoreActions, validActions, context), { icon: true, label: false });
-	}
-
-	private removeDuplicatedAndStartingSeparators(actions: (Action | CellActionBase)[]): void {
-		let indexesToRemove: number[] = [];
-		for (let i = 0; i < actions.length; i++) {
-			// Never should have a separator at the beginning of the list
-			if (i === 0 && actions[i] instanceof Separator) {
-				indexesToRemove.push(0);
-			}
-			// Handle multiple separators in a row
-			if (i > 0 && actions[i] instanceof Separator && actions[i - 1] instanceof Separator) {
-				indexesToRemove.push(i);
-			}
-		}
-		if (indexesToRemove.length > 0) {
-			for (let i = indexesToRemove.length - 1; i >= 0; i--) {
-				actions.splice(indexesToRemove[i], 1);
-			}
-		}
 	}
 }
 
+export function removeDuplicatedAndStartingSeparators(actions: (Action | CellActionBase)[]): void {
+	let indexesToRemove: number[] = [];
+	for (let i = 0; i < actions.length; i++) {
+		// Handle multiple separators in a row
+		if (i > 0 && actions[i] instanceof Separator && actions[i - 1] instanceof Separator) {
+			indexesToRemove.push(i);
+		}
+	}
+	if (indexesToRemove.length > 0) {
+		for (let i = indexesToRemove.length - 1; i >= 0; i--) {
+			actions.splice(indexesToRemove[i], 1);
+		}
+	}
+	if (actions[0] instanceof Separator) {
+		actions.splice(0, 1);
+	}
+	if (actions[actions.length - 1] instanceof Separator) {
+		actions.splice(actions.length - 1, 1);
+	}
+}
+
+export class ConvertCellAction extends CellActionBase {
+	constructor(id: string, label: string,
+		@INotificationService notificationService: INotificationService
+	) {
+		super(id, label, undefined, notificationService);
+	}
+
+	doRun(context: CellContext): Promise<void> {
+		try {
+			context?.model?.convertCellType(context?.cell);
+		} catch (error) {
+			let message = getErrorMessage(error);
+
+			this.notificationService.notify({
+				severity: Severity.Error,
+				message: message
+			});
+		}
+		return Promise.resolve();
+	}
+}
 
 export class AddCellFromContextAction extends CellActionBase {
 	constructor(
@@ -288,7 +345,7 @@ export class CollapseCellAction extends CellActionBase {
 export class ToggleMoreActions extends Action {
 
 	private static readonly ID = 'toggleMore';
-	private static readonly LABEL = localize('toggleMore', "Toggle More");
+	private static readonly LABEL = moreActionsLabel;
 	private static readonly ICON = 'masked-icon more';
 
 	constructor(

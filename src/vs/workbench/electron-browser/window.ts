@@ -6,24 +6,21 @@
 import * as nls from 'vs/nls';
 import { URI } from 'vs/base/common/uri';
 import * as errors from 'vs/base/common/errors';
-import { equals, deepClone } from 'vs/base/common/objects';
+import { equals } from 'vs/base/common/objects';
 import * as DOM from 'vs/base/browser/dom';
-import { Separator } from 'vs/base/browser/ui/actionbar/actionbar';
-import { IAction } from 'vs/base/common/actions';
+import { IAction, Separator } from 'vs/base/common/actions';
 import { IFileService } from 'vs/platform/files/common/files';
 import { toResource, IUntitledTextResourceEditorInput, SideBySideEditor, pathsToEditors } from 'vs/workbench/common/editor';
 import { IEditorService, IResourceEditorInputType } from 'vs/workbench/services/editor/common/editorService';
-import { ITelemetryService, crashReporterIdStorageKey } from 'vs/platform/telemetry/common/telemetry';
-import { IWindowSettings, IOpenFileRequest, IWindowsConfiguration, getTitleBarStyle, IAddFoldersRequest } from 'vs/platform/windows/common/windows';
-import { IRunActionInWindowRequest, IRunKeybindingInWindowRequest, INativeOpenFileRequest } from 'vs/platform/windows/node/window';
+import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
+import { IOpenFileRequest, IWindowsConfiguration, getTitleBarStyle, IAddFoldersRequest, INativeRunActionInWindowRequest, INativeRunKeybindingInWindowRequest, INativeOpenFileRequest } from 'vs/platform/windows/common/windows';
 import { ITitleService } from 'vs/workbench/services/title/common/titleService';
-import { IWorkbenchThemeService, VS_HC_THEME } from 'vs/workbench/services/themes/common/workbenchThemeService';
-import * as browser from 'vs/base/browser/browser';
+import { IWorkbenchThemeService } from 'vs/workbench/services/themes/common/workbenchThemeService';
+import { applyZoom } from 'vs/platform/windows/electron-sandbox/window';
+import { setFullscreen, getZoomLevel } from 'vs/base/browser/browser';
 import { ICommandService, CommandsRegistry } from 'vs/platform/commands/common/commands';
 import { IResourceEditorInput } from 'vs/platform/editor/common/editor';
-import { KeyboardMapperFactory } from 'vs/workbench/services/keybinding/electron-browser/nativeKeymapService';
-import { CrashReporterStartOptions } from 'vs/base/parts/sandbox/common/electronTypes';
-import { crashReporter, ipcRenderer, webFrame } from 'vs/base/parts/sandbox/electron-sandbox/globals';
+import { ipcRenderer } from 'vs/base/parts/sandbox/electron-sandbox/globals';
 import { IWorkspaceEditingService } from 'vs/workbench/services/workspaces/common/workspaceEditing';
 import { IMenuService, MenuId, IMenu, MenuItemAction, ICommandAction, SubmenuItemAction, MenuRegistry } from 'vs/platform/actions/common/actions';
 import { IContextKeyService } from 'vs/platform/contextkey/common/contextkey';
@@ -33,8 +30,8 @@ import { Disposable, DisposableStore } from 'vs/base/common/lifecycle';
 import { LifecyclePhase, ILifecycleService } from 'vs/platform/lifecycle/common/lifecycle';
 import { IWorkspaceFolderCreationData, IWorkspacesService } from 'vs/platform/workspaces/common/workspaces';
 import { IIntegrityService } from 'vs/workbench/services/integrity/common/integrity';
-import { isRootUser, isWindows, isMacintosh, isLinux } from 'vs/base/common/platform';
-import product from 'vs/platform/product/common/product';
+import { isWindows, isMacintosh } from 'vs/base/common/platform';
+import { IProductService } from 'vs/platform/product/common/productService';
 import { INotificationService } from 'vs/platform/notification/common/notification';
 import { IKeybindingService } from 'vs/platform/keybinding/common/keybinding';
 import { IWorkbenchEnvironmentService } from 'vs/workbench/services/environment/common/environmentService';
@@ -46,7 +43,7 @@ import { IInstantiationService } from 'vs/platform/instantiation/common/instanti
 import { MenubarControl } from '../browser/parts/titlebar/menubarControl';
 import { ILabelService } from 'vs/platform/label/common/label';
 import { IUpdateService } from 'vs/platform/update/common/update';
-import { IStorageService, StorageScope } from 'vs/platform/storage/common/storage';
+import { IStorageService } from 'vs/platform/storage/common/storage';
 import { IPreferencesService } from '../services/preferences/common/preferences';
 import { IMenubarData, IMenubarMenu, IMenubarKeybinding, IMenubarMenuItemSubmenu, IMenubarMenuItemAction, MenubarMenuItem } from 'vs/platform/menubar/common/menubar';
 import { IMenubarService } from 'vs/platform/menubar/electron-sandbox/menubar';
@@ -64,6 +61,8 @@ import { AutoSaveMode, IFilesConfigurationService } from 'vs/workbench/services/
 import { Event } from 'vs/base/common/event';
 import { INativeWorkbenchEnvironmentService } from 'vs/workbench/services/environment/electron-browser/environmentService';
 import { clearAllFontInfos } from 'vs/editor/browser/config/configuration';
+import { IRemoteAuthorityResolverService } from 'vs/platform/remote/common/remoteAuthorityResolver';
+import { IAddressProvider, IAddress } from 'vs/platform/remote/common/remoteAgentConnection';
 
 export class NativeWindow extends Disposable {
 
@@ -106,7 +105,8 @@ export class NativeWindow extends Disposable {
 		@IWorkbenchLayoutService private readonly layoutService: IWorkbenchLayoutService,
 		@IWorkingCopyService private readonly workingCopyService: IWorkingCopyService,
 		@IFilesConfigurationService private readonly filesConfigurationService: IFilesConfigurationService,
-		@IStorageService private readonly storageService: IStorageService,
+		@IProductService private readonly productService: IProductService,
+		@IRemoteAuthorityResolverService private readonly remoteAuthorityResolverService: IRemoteAuthorityResolverService
 	) {
 		super();
 
@@ -127,7 +127,7 @@ export class NativeWindow extends Disposable {
 		});
 
 		// Support runAction event
-		ipcRenderer.on('vscode:runAction', async (event: unknown, request: IRunActionInWindowRequest) => {
+		ipcRenderer.on('vscode:runAction', async (event: unknown, request: INativeRunActionInWindowRequest) => {
 			const args: unknown[] = request.args || [];
 
 			// If we run an action from the touchbar, we fill in the currently active resource
@@ -135,7 +135,7 @@ export class NativeWindow extends Disposable {
 			if (request.from === 'touchbar') {
 				const activeEditor = this.editorService.activeEditor;
 				if (activeEditor) {
-					const resource = toResource(activeEditor, { supportSideBySide: SideBySideEditor.MASTER });
+					const resource = toResource(activeEditor, { supportSideBySide: SideBySideEditor.PRIMARY });
 					if (resource) {
 						args.push(resource);
 					}
@@ -158,7 +158,7 @@ export class NativeWindow extends Disposable {
 		});
 
 		// Support runKeybinding event
-		ipcRenderer.on('vscode:runKeybinding', (event: unknown, request: IRunKeybindingInWindowRequest) => {
+		ipcRenderer.on('vscode:runKeybinding', (event: unknown, request: INativeRunKeybindingInWindowRequest) => {
 			if (document.activeElement) {
 				this.keybindingService.dispatchByUserSettingsLabel(request.userSettingsLabel, document.activeElement);
 			}
@@ -182,6 +182,7 @@ export class NativeWindow extends Disposable {
 			this.notificationService.info(message);
 		});
 
+		// Display change events
 		ipcRenderer.on('vscode:displayChanged', () => {
 			clearAllFontInfos();
 		});
@@ -189,34 +190,23 @@ export class NativeWindow extends Disposable {
 		// Fullscreen Events
 		ipcRenderer.on('vscode:enterFullScreen', async () => {
 			await this.lifecycleService.when(LifecyclePhase.Ready);
-			browser.setFullscreen(true);
+			setFullscreen(true);
 		});
 
 		ipcRenderer.on('vscode:leaveFullScreen', async () => {
 			await this.lifecycleService.when(LifecyclePhase.Ready);
-			browser.setFullscreen(false);
+			setFullscreen(false);
 		});
 
 		// High Contrast Events
 		ipcRenderer.on('vscode:enterHighContrast', async () => {
-			const windowConfig = this.configurationService.getValue<IWindowSettings>('window');
-			if (windowConfig?.autoDetectHighContrast) {
-				await this.lifecycleService.when(LifecyclePhase.Ready);
-				this.themeService.setColorTheme(VS_HC_THEME, undefined);
-			}
+			await this.lifecycleService.when(LifecyclePhase.Ready);
+			this.themeService.setOSHighContrast(true);
 		});
 
 		ipcRenderer.on('vscode:leaveHighContrast', async () => {
-			const windowConfig = this.configurationService.getValue<IWindowSettings>('window');
-			if (windowConfig?.autoDetectHighContrast) {
-				await this.lifecycleService.when(LifecyclePhase.Ready);
-				this.themeService.restoreColorTheme();
-			}
-		});
-
-		// keyboard layout changed event
-		ipcRenderer.on('vscode:keyboardLayoutChanged', () => {
-			KeyboardMapperFactory.INSTANCE._onKeyboardLayoutChanged();
+			await this.lifecycleService.when(LifecyclePhase.Ready);
+			this.themeService.setOSHighContrast(false);
 		});
 
 		// accessibility support changed event
@@ -246,7 +236,7 @@ export class NativeWindow extends Disposable {
 		// macOS OS integration
 		if (isMacintosh) {
 			this._register(this.editorService.onDidActiveEditorChange(() => {
-				const file = toResource(this.editorService.activeEditor, { supportSideBySide: SideBySideEditor.MASTER, filterByScheme: Schemas.file });
+				const file = toResource(this.editorService.activeEditor, { supportSideBySide: SideBySideEditor.PRIMARY, filterByScheme: Schemas.file });
 
 				// Represented Filename
 				this.updateRepresentedFilename(file?.fsPath);
@@ -322,27 +312,22 @@ export class NativeWindow extends Disposable {
 	}
 
 	private updateWindowZoomLevel(): void {
-		const windowConfig: IWindowsConfiguration = this.configurationService.getValue<IWindowsConfiguration>();
+		const windowConfig = this.configurationService.getValue<IWindowsConfiguration>();
 
-		let newZoomLevel = 0;
+		let configuredZoomLevel = 0;
 		if (windowConfig.window && typeof windowConfig.window.zoomLevel === 'number') {
-			newZoomLevel = windowConfig.window.zoomLevel;
+			configuredZoomLevel = windowConfig.window.zoomLevel;
 
 			// Leave early if the configured zoom level did not change (https://github.com/Microsoft/vscode/issues/1536)
-			if (this.previousConfiguredZoomLevel === newZoomLevel) {
+			if (this.previousConfiguredZoomLevel === configuredZoomLevel) {
 				return;
 			}
 
-			this.previousConfiguredZoomLevel = newZoomLevel;
+			this.previousConfiguredZoomLevel = configuredZoomLevel;
 		}
 
-		if (webFrame.getZoomLevel() !== newZoomLevel) {
-			webFrame.setZoomLevel(newZoomLevel);
-			browser.setZoomFactor(webFrame.getZoomFactor());
-			// See https://github.com/Microsoft/vscode/issues/26151
-			// Cannot be trusted because the webFrame might take some time
-			// until it really applies the new zoom level
-			browser.setZoomLevel(webFrame.getZoomLevel(), /*isTrusted*/false);
+		if (getZoomLevel() !== configuredZoomLevel) {
+			applyZoom(configuredZoomLevel);
 		}
 	}
 
@@ -395,49 +380,27 @@ export class NativeWindow extends Disposable {
 		// Handle open calls
 		this.setupOpenHandlers();
 
-		// Emit event when vscode is ready
-		this.lifecycleService.when(LifecyclePhase.Ready).then(() => ipcRenderer.send('vscode:workbenchReady', this.electronService.windowId));
+		// Notify main side when window ready
+		this.lifecycleService.when(LifecyclePhase.Ready).then(() => this.electronService.notifyReady());
 
 		// Integrity warning
 		this.integrityService.isPure().then(res => this.titleService.updateProperties({ isPure: res.isPure }));
 
 		// Root warning
 		this.lifecycleService.when(LifecyclePhase.Restored).then(async () => {
-			let isAdmin: boolean;
-			if (isWindows) {
-				isAdmin = (await import('native-is-elevated'))();
-			} else {
-				isAdmin = isRootUser();
-			}
+			const isAdmin = await this.electronService.isAdmin();
 
 			// Update title
 			this.titleService.updateProperties({ isAdmin });
 
 			// Show warning message (unix only)
 			if (isAdmin && !isWindows) {
-				this.notificationService.warn(nls.localize('runningAsRoot', "It is not recommended to run {0} as root user.", product.nameShort));
+				this.notificationService.warn(nls.localize('runningAsRoot', "It is not recommended to run {0} as root user.", this.productService.nameShort));
 			}
 		});
 
 		// Touchbar menu (if enabled)
 		this.updateTouchbarMenu();
-
-		// Crash reporter (if enabled)
-		if (!this.environmentService.disableCrashReporter && this.configurationService.getValue('telemetry.enableCrashReporter')) {
-			const companyName = product.crashReporter?.companyName || 'Microsoft';
-			const productName = product.crashReporter?.productName || product.nameShort;
-
-			// With a provided crash reporter directory, crashes
-			// will be stored only locally in that folder
-			if (this.environmentService.crashReporterDirectory) {
-				this.setupCrashReporter(companyName, productName, undefined, this.environmentService.crashReporterDirectory);
-			}
-
-			// With appCenter enabled, crashes will be uploaded
-			else if (product.appCenter) {
-				this.setupCrashReporter(companyName, productName, product.appCenter, undefined);
-			}
-		}
 	}
 
 	private setupOpenHandlers(): void {
@@ -469,10 +432,16 @@ export class NativeWindow extends Disposable {
 				if (options?.allowTunneling) {
 					const portMappingRequest = extractLocalHostUriMetaDataForPortMapping(uri);
 					if (portMappingRequest) {
-						const tunnel = await this.tunnelService.openTunnel(undefined, portMappingRequest.port);
+						const remoteAuthority = this.environmentService.configuration.remoteAuthority;
+						const addressProvider: IAddressProvider | undefined = remoteAuthority ? {
+							getAddress: async (): Promise<IAddress> => {
+								return (await this.remoteAuthorityResolverService.resolveAuthority(remoteAuthority)).authority;
+							}
+						} : undefined;
+						const tunnel = await this.tunnelService.openTunnel(addressProvider, portMappingRequest.address, portMappingRequest.port);
 						if (tunnel) {
 							return {
-								resolved: uri.with({ authority: `127.0.0.1:${tunnel.tunnelLocalPort}` }),
+								resolved: uri.with({ authority: tunnel.localAddress }),
 								dispose: () => tunnel.dispose(),
 							};
 						}
@@ -549,42 +518,6 @@ export class NativeWindow extends Disposable {
 		}
 	}
 
-	private async setupCrashReporter(companyName: string, productName: string, appCenter: typeof product.appCenter, crashesDirectory: undefined): Promise<void>;
-	private async setupCrashReporter(companyName: string, productName: string, appCenter: undefined, crashesDirectory: string): Promise<void>;
-	private async setupCrashReporter(companyName: string, productName: string, appCenter: typeof product.appCenter | undefined, crashesDirectory: string | undefined): Promise<void> {
-		let submitURL: string | undefined = undefined;
-		if (appCenter) {
-			submitURL = isWindows ? appCenter[process.arch === 'ia32' ? 'win32-ia32' : 'win32-x64'] : isLinux ? appCenter[`linux-x64`] : appCenter.darwin;
-		}
-
-		const info = await this.telemetryService.getTelemetryInfo();
-		const crashReporterId = this.storageService.get(crashReporterIdStorageKey, StorageScope.GLOBAL)!;
-
-		// base options with product info
-		const options: CrashReporterStartOptions = {
-			companyName,
-			productName,
-			submitURL: (submitURL?.concat('&uid=', crashReporterId, '&iid=', crashReporterId, '&sid=', info.sessionId)) || '',
-			extra: {
-				vscode_version: product.version,
-				vscode_commit: product.commit || ''
-			},
-
-			// If `crashesDirectory` is specified, we do not upload
-			uploadToServer: !crashesDirectory,
-		};
-
-		// start crash reporter in the main process first.
-		// On windows crashpad excepts a name pipe for the client to connect,
-		// this pipe is created by crash reporter initialization from the main process,
-		// changing this order of initialization will cause issues.
-		// For more info: https://chromium.googlesource.com/crashpad/crashpad/+/HEAD/doc/overview_design.md#normal-registration
-		await this.electronService.startCrashReporter(options);
-
-		// start crash reporter right here
-		crashReporter.start(deepClone(options));
-	}
-
 	private onAddFoldersRequest(request: IAddFoldersRequest): void {
 
 		// Buffer all pending requests
@@ -635,7 +568,7 @@ export class NativeWindow extends Disposable {
 	private async trackClosedWaitFiles(waitMarkerFile: URI, resourcesToWaitFor: URI[]): Promise<void> {
 
 		// Wait for the resources to be closed in the editor...
-		await this.editorService.whenClosed(resourcesToWaitFor, { waitForSaved: true });
+		await this.editorService.whenClosed(resourcesToWaitFor.map(resource => ({ resource })), { waitForSaved: true });
 
 		// ...before deleting the wait marker file
 		await this.fileService.del(waitMarkerFile);
@@ -671,7 +604,7 @@ class NativeMenubarControl extends MenubarControl {
 		@IStorageService storageService: IStorageService,
 		@INotificationService notificationService: INotificationService,
 		@IPreferencesService preferencesService: IPreferencesService,
-		@IWorkbenchEnvironmentService protected readonly environmentService: INativeWorkbenchEnvironmentService,
+		@IWorkbenchEnvironmentService protected readonly environmentService: IWorkbenchEnvironmentService,
 		@IAccessibilityService accessibilityService: IAccessibilityService,
 		@IMenubarService private readonly menubarService: IMenubarService,
 		@IHostService hostService: IHostService,
@@ -708,13 +641,13 @@ class NativeMenubarControl extends MenubarControl {
 		(async () => {
 			this.recentlyOpened = await this.workspacesService.getRecentlyOpened();
 
-			this.doUpdateMenubar(true);
+			this.doUpdateMenubar();
 		})();
 
 		this.registerListeners();
 	}
 
-	protected doUpdateMenubar(firstTime: boolean): void {
+	protected doUpdateMenubar(): void {
 		// Since the native menubar is shared between windows (main process)
 		// only allow the focused window to update the menubar
 		if (!this.hostService.hasFocus) {

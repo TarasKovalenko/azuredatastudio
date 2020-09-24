@@ -11,7 +11,7 @@ import { createSection, getDropdownComponent, InputComponentInfo, InputComponent
 import { WizardPageBase } from '../../wizardPageBase';
 import { AksName_VariableName, Location_VariableName, ResourceGroup_VariableName, SubscriptionId_VariableName, VMCount_VariableName, VMSize_VariableName } from '../constants';
 import { DeployClusterWizard } from '../deployClusterWizard';
-import { AzureRegion } from '../../../../../azurecore/src/azurecore';
+import { AzureRegion } from 'azurecore';
 const localize = nls.loadMessageBundle();
 const MissingRequiredInformationErrorMessage = localize('deployCluster.MissingRequiredInfoError', "Please fill out the required fields marked with red asterisks.");
 
@@ -125,8 +125,8 @@ export class AzureSettingsPage extends WizardPageBase<DeployClusterWizard> {
 				}]
 			}]
 		};
-		this.pageObject.registerContent((view: azdata.ModelView) => {
-			const azureGroup = createSection({
+		this.pageObject.registerContent(async (view: azdata.ModelView) => {
+			const azureGroup = await createSection({
 				sectionInfo: azureSection,
 				view: view,
 				onNewDisposableCreated: (disposable: vscode.Disposable): void => {
@@ -139,7 +139,8 @@ export class AzureSettingsPage extends WizardPageBase<DeployClusterWizard> {
 					self.validators.push(validator);
 				},
 				container: this.wizard.wizardObject,
-				inputComponents: this.wizard.inputComponents
+				inputComponents: this.wizard.inputComponents,
+				toolsService: this.wizard.toolsService
 			});
 			const formBuilder = view.modelBuilder.formContainer().withFormItems(
 				[{
@@ -157,7 +158,7 @@ export class AzureSettingsPage extends WizardPageBase<DeployClusterWizard> {
 		});
 	}
 
-	public onEnter(): void {
+	public async onEnter(): Promise<void> {
 		this.wizard.wizardObject.registerNavigationValidator((pcInfo) => {
 			this.wizard.wizardObject.message = { text: '' };
 			if (pcInfo.newPage > pcInfo.lastPage) {
@@ -175,11 +176,11 @@ export class AzureSettingsPage extends WizardPageBase<DeployClusterWizard> {
 		});
 	}
 
-	public onLeave(): void {
+	public async onLeave(): Promise<void> {
 		this.wizard.wizardObject.registerNavigationValidator((pcInfo) => {
 			return true;
 		});
-		setModelValues(this.inputComponents, this.wizard.model);
+		await setModelValues(this.inputComponents, this.wizard.model);
 		Object.assign(this.wizard.inputComponents, this.inputComponents);
 	}
 }

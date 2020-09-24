@@ -61,7 +61,7 @@ interface InstallableExtension {
 
 export class ExtensionManagementService extends Disposable implements IExtensionManagementService {
 
-	_serviceBrand: undefined;
+	declare readonly _serviceBrand: undefined;
 
 	private readonly extensionsScanner: ExtensionsScanner;
 	private reportedExtensions: Promise<IReportedExtension[]> | undefined;
@@ -92,7 +92,8 @@ export class ExtensionManagementService extends Disposable implements IExtension
 		@IInstantiationService instantiationService: IInstantiationService,
 	) {
 		super();
-		this.extensionsScanner = this._register(instantiationService.createInstance(ExtensionsScanner));
+		const extensionLifecycle = this._register(instantiationService.createInstance(ExtensionsLifecycle));
+		this.extensionsScanner = this._register(instantiationService.createInstance(ExtensionsScanner, extension => extensionLifecycle.postUninstall(extension)));
 		this.manifestCache = this._register(new ExtensionsManifestCache(environmentService, this));
 		this.extensionsDownloader = this._register(instantiationService.createInstance(ExtensionsDownloader));
 
@@ -102,9 +103,6 @@ export class ExtensionManagementService extends Disposable implements IExtension
 			this.installingExtensions.clear();
 			this.uninstallingExtensions.clear();
 		}));
-
-		const extensionLifecycle = this._register(new ExtensionsLifecycle(environmentService, this.logService));
-		this._register(this.extensionsScanner.onDidRemoveExtension(extension => extensionLifecycle.postUninstall(extension)));
 	}
 
 	zip(extension: ILocalExtension): Promise<URI> {
@@ -178,7 +176,7 @@ export class ExtensionManagementService extends Disposable implements IExtension
 									if (identifierWithVersion.equals(new ExtensionIdentifierWithVersion(existing.identifier, existing.manifest.version))) {
 										return this.extensionsScanner.removeExtension(existing, 'existing').then(null, e => Promise.reject(new Error(nls.localize('restartCode', "Please restart Azure Data Studio before reinstalling {0}.", manifest.displayName || manifest.name))));
 									} else if (semver.gt(existing.manifest.version, manifest.version)) {
-										return this.uninstall(existing, true);
+										return this.uninstallExtension(existing);
 									}
 								} else {
 									// Remove the extension with same version if it is already uninstalled.
@@ -255,6 +253,10 @@ export class ExtensionManagementService extends Disposable implements IExtension
 			));
 	}*/
 
+	async canInstall(extension: IGalleryExtension): Promise<boolean> {
+		return true;
+	}
+
 	async installFromGallery(extension: IGalleryExtension, isMachineScoped?: boolean): Promise<ILocalExtension> {
 		if (!this.galleryService.isEnabled()) {
 			return Promise.reject(new Error(nls.localize('MarketPlaceDisabled', "Marketplace is not enabled")));
@@ -309,7 +311,7 @@ export class ExtensionManagementService extends Disposable implements IExtension
 							.then(local => this.extensionsDownloader.delete(URI.file(installableExtension.zipPath)).finally(() => { }).then(() => local));
 					})
 					.then(local => this.installDependenciesAndPackExtensions(local, existingExtension)
-						.then(() => local, error => this.uninstall(local, true).then(() => Promise.reject(error), () => Promise.reject(error))))
+						.then(() => local, error => this.uninstall(local).then(() => Promise.reject(error), () => Promise.reject(error))))
 					.then(
 						async local => {
 							if (existingExtension && semver.neq(existingExtension.manifest.version, extension.version)) {
@@ -480,11 +482,11 @@ export class ExtensionManagementService extends Disposable implements IExtension
 		return this.getInstalled(ExtensionType.User)
 			.then(installed =>
 				Promise.all(installed.filter(local => extensions.some(galleryExtension => new ExtensionIdentifierWithVersion(local.identifier, local.manifest.version).equals(new ExtensionIdentifierWithVersion(galleryExtension.identifier, galleryExtension.version)))) // Check with version because we want to rollback the exact version
-					.map(local => this.uninstall(local, true))))
+					.map(local => this.uninstall(local))))
 			.then(() => undefined, () => undefined);
 	}
 
-	uninstall(extension: ILocalExtension, force = false): Promise<void> {
+	uninstall(extension: ILocalExtension): Promise<void> {
 		this.logService.trace('ExtensionManagementService#uninstall', extension.identifier.id);
 		return this.toNonCancellablePromise(this.getInstalled(ExtensionType.User)
 			.then(installed => {
@@ -551,28 +553,51 @@ export class ExtensionManagementService extends Disposable implements IExtension
 				});
 	}
 
-	private uninstallExtensions(extension: ILocalExtension, otherExtensionsToUninstall: ILocalExtension[], installed: ILocalExtension[]): Promise<void> {
-		const dependents = this.getDependents(extension, installed);
-		if (dependents.length) {
-			const remainingDependents = dependents.filter(dependent => extension !== dependent && otherExtensionsToUninstall.indexOf(dependent) === -1);
-			if (remainingDependents.length) {
-				return Promise.reject(new Error(this.getDependentsErrorMessage(extension, remainingDependents)));
-			}
+	private async uninstallExtensions(extension: ILocalExtension, otherExtensionsToUninstall: ILocalExtension[], installed: ILocalExtension[]): Promise<void> {
+		const extensionsToUninstall = [extension, ...otherExtensionsToUninstall];
+		for (const e of extensionsToUninstall) {
+			this.checkForDependents(e, extensionsToUninstall, installed, extension);
 		}
-		return Promise.all([this.uninstallExtension(extension), ...otherExtensionsToUninstall.map(d => this.doUninstall(d))]).then(() => undefined);
+		await Promise.all([this.uninstallExtension(extension), ...otherExtensionsToUninstall.map(d => this.doUninstall(d))]);
 	}
 
-	private getDependentsErrorMessage(extension: ILocalExtension, dependents: ILocalExtension[]): string {
+	private checkForDependents(extension: ILocalExtension, extensionsToUninstall: ILocalExtension[], installed: ILocalExtension[], extensionToUninstall: ILocalExtension): void {
+		const dependents = this.getDependents(extension, installed);
+		if (dependents.length) {
+			const remainingDependents = dependents.filter(dependent => extensionsToUninstall.indexOf(dependent) === -1);
+			if (remainingDependents.length) {
+				throw new Error(this.getDependentsErrorMessage(extension, remainingDependents, extensionToUninstall));
+			}
+		}
+	}
+
+	private getDependentsErrorMessage(dependingExtension: ILocalExtension, dependents: ILocalExtension[], extensionToUninstall: ILocalExtension): string {
+		if (extensionToUninstall === dependingExtension) {
+			if (dependents.length === 1) {
+				return nls.localize('singleDependentError', "Cannot uninstall '{0}' extension. '{1}' extension depends on this.",
+					extensionToUninstall.manifest.displayName || extensionToUninstall.manifest.name, dependents[0].manifest.displayName || dependents[0].manifest.name);
+			}
+			if (dependents.length === 2) {
+				return nls.localize('twoDependentsError', "Cannot uninstall '{0}' extension. '{1}' and '{2}' extensions depend on this.",
+					extensionToUninstall.manifest.displayName || extensionToUninstall.manifest.name, dependents[0].manifest.displayName || dependents[0].manifest.name, dependents[1].manifest.displayName || dependents[1].manifest.name);
+			}
+			return nls.localize('multipleDependentsError', "Cannot uninstall '{0}' extension. '{1}', '{2}' and other extension depend on this.",
+				extensionToUninstall.manifest.displayName || extensionToUninstall.manifest.name, dependents[0].manifest.displayName || dependents[0].manifest.name, dependents[1].manifest.displayName || dependents[1].manifest.name);
+		}
 		if (dependents.length === 1) {
-			return nls.localize('singleDependentError', "Cannot uninstall extension '{0}'. Extension '{1}' depends on this.",
-				extension.manifest.displayName || extension.manifest.name, dependents[0].manifest.displayName || dependents[0].manifest.name);
+			return nls.localize('singleIndirectDependentError', "Cannot uninstall '{0}' extension . It includes uninstalling '{1}' extension and '{2}' extension depends on this.",
+				extensionToUninstall.manifest.displayName || extensionToUninstall.manifest.name, dependingExtension.manifest.displayName
+			|| dependingExtension.manifest.name, dependents[0].manifest.displayName || dependents[0].manifest.name);
 		}
 		if (dependents.length === 2) {
-			return nls.localize('twoDependentsError', "Cannot uninstall extension '{0}'. Extensions '{1}' and '{2}' depend on this.",
-				extension.manifest.displayName || extension.manifest.name, dependents[0].manifest.displayName || dependents[0].manifest.name, dependents[1].manifest.displayName || dependents[1].manifest.name);
+			return nls.localize('twoIndirectDependentsError', "Cannot uninstall '{0}' extension. It includes uninstalling '{1}' extension and '{2}' and '{3}' extensions depend on this.",
+				extensionToUninstall.manifest.displayName || extensionToUninstall.manifest.name, dependingExtension.manifest.displayName
+			|| dependingExtension.manifest.name, dependents[0].manifest.displayName || dependents[0].manifest.name, dependents[1].manifest.displayName || dependents[1].manifest.name);
 		}
-		return nls.localize('multipleDependentsError', "Cannot uninstall extension '{0}'. Extensions '{1}', '{2}' and others depend on this.",
-			extension.manifest.displayName || extension.manifest.name, dependents[0].manifest.displayName || dependents[0].manifest.name, dependents[1].manifest.displayName || dependents[1].manifest.name);
+		return nls.localize('multipleIndirectDependentsError', "Cannot uninstall '{0}' extension. It includes uninstalling '{1}' extension and '{2}', '{3}' and other extensions depend on this.",
+			extensionToUninstall.manifest.displayName || extensionToUninstall.manifest.name, dependingExtension.manifest.displayName
+		|| dependingExtension.manifest.name, dependents[0].manifest.displayName || dependents[0].manifest.name, dependents[1].manifest.displayName || dependents[1].manifest.name);
+
 	}
 
 	private getAllPackExtensionsToUninstall(extension: ILocalExtension, installed: ILocalExtension[], checked: ILocalExtension[] = []): ILocalExtension[] {

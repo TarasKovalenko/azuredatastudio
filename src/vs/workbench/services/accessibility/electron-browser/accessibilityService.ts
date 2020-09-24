@@ -27,7 +27,7 @@ type AccessibilityMetricsClassification = {
 
 export class NativeAccessibilityService extends AccessibilityService implements IAccessibilityService {
 
-	_serviceBrand: undefined;
+	declare readonly _serviceBrand: undefined;
 
 	private didSendTelemetry = false;
 
@@ -41,23 +41,21 @@ export class NativeAccessibilityService extends AccessibilityService implements 
 		this.setAccessibilitySupport(environmentService.configuration.accessibilitySupport ? AccessibilitySupport.Enabled : AccessibilitySupport.Disabled);
 	}
 
-	alwaysUnderlineAccessKeys(): Promise<boolean> {
+	async alwaysUnderlineAccessKeys(): Promise<boolean> {
 		if (!isWindows) {
-			return Promise.resolve(false);
+			return false;
 		}
 
-		return new Promise<boolean>(async (resolve) => {
-			const Registry = await import('vscode-windows-registry');
+		const Registry = await import('vscode-windows-registry');
 
-			let value;
-			try {
-				value = Registry.GetStringRegKey('HKEY_CURRENT_USER', 'Control Panel\\Accessibility\\Keyboard Preference', 'On');
-			} catch {
-				resolve(false);
-			}
+		let value: string | undefined = undefined;
+		try {
+			value = Registry.GetStringRegKey('HKEY_CURRENT_USER', 'Control Panel\\Accessibility\\Keyboard Preference', 'On');
+		} catch {
+			return false;
+		}
 
-			resolve(value === '1');
-		});
+		return value === '1';
 	}
 
 	setAccessibilitySupport(accessibilitySupport: AccessibilitySupport): void {
@@ -81,7 +79,7 @@ class LinuxAccessibilityContribution implements IWorkbenchContribution {
 	) {
 		const forceRendererAccessibility = () => {
 			if (accessibilityService.isScreenReaderOptimized()) {
-				jsonEditingService.write(environmentService.argvResource, [{ key: 'force-renderer-accessibility', value: true }], true);
+				jsonEditingService.write(environmentService.argvResource, [{ path: ['force-renderer-accessibility'], value: true }], true);
 			}
 		};
 		forceRendererAccessibility();

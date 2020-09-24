@@ -14,7 +14,7 @@ import * as paths from 'vs/base/common/path';
 import { whenDeleted, writeFileSync } from 'vs/base/node/pfs';
 import { findFreePort, randomPort } from 'vs/base/node/ports';
 import { isWindows, isLinux } from 'vs/base/common/platform';
-import { ProfilingSession, Target } from 'v8-inspect-profiler';
+import type { ProfilingSession, Target } from 'v8-inspect-profiler';
 import { isString } from 'vs/base/common/types';
 import { hasStdinWithoutTty, stdinDataListener, getStdinFilePath, readFromStdin } from 'vs/platform/environment/node/stdin';
 
@@ -43,7 +43,7 @@ export async function main(argv: string[]): Promise<any> {
 
 	// Help
 	if (args.help) {
-		const executable = `${product.applicationName}${os.platform() === 'win32' ? '.exe' : ''}`;
+		const executable = `${product.applicationName}${isWindows ? '.exe' : ''}`;
 		console.log(buildHelpMessage(product.nameLong, executable, product.version, OPTIONS));
 	}
 
