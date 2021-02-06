@@ -35,13 +35,13 @@ import { endsWith, startsWith } from 'vs/base/common/strings';
 import { IClipboardService } from 'vs/platform/clipboard/common/clipboardService';
 import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
 import { ILogService } from 'vs/platform/log/common/log';
-import { find } from 'vs/base/common/arrays';
 
 export enum AuthenticationType {
 	SqlLogin = 'SqlLogin',
 	Integrated = 'Integrated',
 	AzureMFA = 'AzureMFA',
-	AzureMFAAndUser = 'AzureMFAAndUser'
+	AzureMFAAndUser = 'AzureMFAAndUser',
+	dSTSAuth = 'dstsAuth'
 }
 
 export class ConnectionWidget extends lifecycle.Disposable {
@@ -66,6 +66,7 @@ export class ConnectionWidget extends lifecycle.Disposable {
 	private _defaultDatabaseName: string = localize('defaultDatabaseOption', "<Default>");
 	private _loadingDatabaseName: string = localize('loadingDatabaseOption', "Loading...");
 	private _serverGroupDisplayString: string = localize('serverGroup', "Server group");
+	private _token: string;
 	protected _container: HTMLElement;
 	protected _serverGroupSelectBox: SelectBox;
 	protected _authTypeSelectBox: SelectBox;
@@ -76,7 +77,7 @@ export class ConnectionWidget extends lifecycle.Disposable {
 	protected _databaseNameInputBox: Dropdown;
 	protected _advancedButton: Button;
 	private static readonly _authTypes: AuthenticationType[] =
-		[AuthenticationType.AzureMFA, AuthenticationType.AzureMFAAndUser, AuthenticationType.Integrated, AuthenticationType.SqlLogin];
+		[AuthenticationType.AzureMFA, AuthenticationType.AzureMFAAndUser, AuthenticationType.Integrated, AuthenticationType.SqlLogin, AuthenticationType.dSTSAuth];
 	private static readonly _osByName = {
 		Windows: OperatingSystem.Windows,
 		Macintosh: OperatingSystem.Macintosh,
@@ -136,7 +137,7 @@ export class ConnectionWidget extends lifecycle.Disposable {
 	protected getAuthTypeDefault(option: azdata.ConnectionOption, os: OperatingSystem): string {
 		// Check for OS-specific default value
 		if (option.defaultValueOsOverrides) {
-			let result = find(option.defaultValueOsOverrides, d => ConnectionWidget._osByName[d.os] === os);
+			let result = option.defaultValueOsOverrides.find(d => ConnectionWidget._osByName[d.os] === os);
 			if (result) {
 				return result.defaultValueOverride;
 			}
@@ -162,6 +163,7 @@ export class ConnectionWidget extends lifecycle.Disposable {
 		this._previousGroupOption = this._serverGroupSelectBox.value;
 		this._container = DOM.append(container, DOM.$('div.connection-table'));
 		this._tableContainer = DOM.append(this._container, DOM.$('table.connection-table-content'));
+		this._tableContainer.setAttribute('role', 'presentation');
 		this.fillInConnectionForm(authTypeChanged);
 		this.registerListeners();
 		if (this._authTypeSelectBox) {
@@ -285,8 +287,7 @@ export class ConnectionWidget extends lifecycle.Disposable {
 				strictSelection: false,
 				placeholder: this._defaultDatabaseName,
 				maxHeight: 125,
-				ariaLabel: databaseOption.displayName,
-				actionLabel: localize('connectionWidget.toggleDatabaseNameDropdown', "Select Database Toggle Dropdown")
+				ariaLabel: databaseOption.displayName
 			});
 		}
 	}
@@ -365,7 +366,7 @@ export class ConnectionWidget extends lifecycle.Disposable {
 				this._databaseDropdownExpanded = true;
 				if (this.serverName) {
 					this._databaseNameInputBox.values = [this._loadingDatabaseName];
-					this._callbacks.onFetchDatabases(this.serverName, this.authenticationType, this.userName, this._password).then(databases => {
+					this._callbacks.onFetchDatabases(this.serverName, this.authenticationType, this.userName, this._password, this.authToken).then(databases => {
 						if (databases) {
 							this._databaseNameInputBox.values = databases.sort((a, b) => a.localeCompare(b));
 						} else {
@@ -413,7 +414,7 @@ export class ConnectionWidget extends lifecycle.Disposable {
 
 		if (this._refreshCredentialsLink) {
 			this._register(DOM.addDisposableListener(this._refreshCredentialsLink, DOM.EventType.CLICK, async () => {
-				let account = find(this._azureAccountList, account => account.key.accountId === this._azureAccountDropdown.value);
+				let account = this._azureAccountList.find(account => account.key.accountId === this._azureAccountDropdown.value);
 				if (account) {
 					await this._accountManagementService.refreshAccount(account);
 					await this.fillInAzureAccountOptions();
@@ -490,9 +491,9 @@ export class ConnectionWidget extends lifecycle.Disposable {
 				this._azureTenantDropdown.enable();
 			}).catch(err => this._logService.error(`Unexpected error populating Azure Account dropdown : ${err}`));
 			// Immediately show/hide appropriate elements though so user gets immediate feedback while we load accounts
-			DOM.addClass(this._tableContainer, 'hide-username');
-			DOM.addClass(this._tableContainer, 'hide-password');
-			DOM.removeClass(this._tableContainer, 'hide-azure-accounts');
+			this._tableContainer.classList.add('hide-username');
+			this._tableContainer.classList.add('hide-password');
+			this._tableContainer.classList.remove('hide-azure-accounts');
 		} else if (currentAuthType === AuthenticationType.AzureMFAAndUser) {
 			this.fillInAzureAccountOptions().then(async () => {
 				// Don't enable the control until we've populated it
@@ -502,17 +503,33 @@ export class ConnectionWidget extends lifecycle.Disposable {
 				this._azureTenantDropdown.enable();
 			}).catch(err => this._logService.error(`Unexpected error populating Azure Account dropdown : ${err}`));
 			// Immediately show/hide appropriate elements though so user gets immediate feedback while we load accounts
-			DOM.removeClass(this._tableContainer, 'hide-username');
-			DOM.addClass(this._tableContainer, 'hide-password');
-			DOM.removeClass(this._tableContainer, 'hide-azure-accounts');
+			this._tableContainer.classList.remove('hide-username');
+			this._tableContainer.classList.add('hide-password');
+			this._tableContainer.classList.remove('hide-azure-accounts');
+		} else if (currentAuthType === AuthenticationType.dSTSAuth) {
+			this._accountManagementService.getAccountsForProvider('dstsAuth').then(accounts => {
+				if (accounts && accounts.length > 0) {
+					accounts[0].key.providerArgs = {
+						serverName: this.serverName,
+						databaseName: this.databaseName
+					};
+
+					this._accountManagementService.getAccountSecurityToken(accounts[0], undefined, undefined).then(securityToken => {
+						this._token = securityToken.token;
+					});
+				}
+			});
+			this._tableContainer.classList.add('hide-username');
+			this._tableContainer.classList.add('hide-password');
+			this._tableContainer.classList.add('hide-azure-accounts');
 		} else {
 			this._azureAccountDropdown.disable();
 			this._azureAccountDropdown.hideMessage();
 			this._azureTenantDropdown.disable();
 			this._azureTenantDropdown.hideMessage();
-			DOM.removeClass(this._tableContainer, 'hide-username');
-			DOM.removeClass(this._tableContainer, 'hide-password');
-			DOM.addClass(this._tableContainer, 'hide-azure-accounts');
+			this._tableContainer.classList.remove('hide-username');
+			this._tableContainer.classList.remove('hide-password');
+			this._tableContainer.classList.add('hide-azure-accounts');
 		}
 	}
 
@@ -537,11 +554,11 @@ export class ConnectionWidget extends lifecycle.Disposable {
 	}
 
 	private updateRefreshCredentialsLink(): void {
-		let chosenAccount = find(this._azureAccountList, account => account.key.accountId === this._azureAccountDropdown.value);
+		let chosenAccount = this._azureAccountList.find(account => account.key.accountId === this._azureAccountDropdown.value);
 		if (chosenAccount && chosenAccount.isStale) {
-			DOM.removeClass(this._tableContainer, 'hide-refresh-link');
+			this._tableContainer.classList.remove('hide-refresh-link');
 		} else {
-			DOM.addClass(this._tableContainer, 'hide-refresh-link');
+			this._tableContainer.classList.add('hide-refresh-link');
 		}
 	}
 
@@ -558,7 +575,7 @@ export class ConnectionWidget extends lifecycle.Disposable {
 			await this.fillInAzureAccountOptions();
 
 			// If a new account was added find it and select it, otherwise select the first account
-			let newAccount = find(this._azureAccountList, option => !oldAccountIds.some(oldId => oldId === option.key.accountId));
+			let newAccount = this._azureAccountList.find(option => !oldAccountIds.some(oldId => oldId === option.key.accountId));
 			if (newAccount) {
 				this._azureAccountDropdown.selectWithOptionName(newAccount.key.accountId);
 			} else {
@@ -570,12 +587,12 @@ export class ConnectionWidget extends lifecycle.Disposable {
 
 		// Display the tenant select box if needed
 		const hideTenantsClassName = 'hide-azure-tenants';
-		let selectedAccount = find(this._azureAccountList, account => account.key.accountId === this._azureAccountDropdown.value);
+		let selectedAccount = this._azureAccountList.find(account => account.key.accountId === this._azureAccountDropdown.value);
 		if (selectedAccount && selectedAccount.properties.tenants && selectedAccount.properties.tenants.length > 1) {
 			// There are multiple tenants available so let the user select one
 			let options = selectedAccount.properties.tenants.map(tenant => tenant.displayName);
 			this._azureTenantDropdown.setOptions(options);
-			DOM.removeClass(this._tableContainer, hideTenantsClassName);
+			this._tableContainer.classList.remove(hideTenantsClassName);
 			this.onAzureTenantSelected(0);
 		} else {
 			if (selectedAccount && selectedAccount.properties.tenants && selectedAccount.properties.tenants.length === 1) {
@@ -583,13 +600,13 @@ export class ConnectionWidget extends lifecycle.Disposable {
 			} else {
 				this._azureTenantId = undefined;
 			}
-			DOM.addClass(this._tableContainer, hideTenantsClassName);
+			this._tableContainer.classList.add(hideTenantsClassName);
 		}
 	}
 
 	private onAzureTenantSelected(tenantIndex: number): void {
 		this._azureTenantId = undefined;
-		let account = find(this._azureAccountList, account => account.key.accountId === this._azureAccountDropdown.value);
+		let account = this._azureAccountList.find(account => account.key.accountId === this._azureAccountDropdown.value);
 		if (account && account.properties.tenants) {
 			let tenant = account.properties.tenants[tenantIndex];
 			if (tenant) {
@@ -696,9 +713,9 @@ export class ConnectionWidget extends lifecycle.Disposable {
 			if (this._authTypeSelectBox) {
 				this.onAuthTypeSelected(this._authTypeSelectBox.value);
 			} else {
-				DOM.removeClass(this._tableContainer, 'hide-username');
-				DOM.removeClass(this._tableContainer, 'hide-password');
-				DOM.addClass(this._tableContainer, 'hide-azure-accounts');
+				this._tableContainer.classList.remove('hide-username');
+				this._tableContainer.classList.remove('hide-password');
+				this._tableContainer.classList.add('hide-azure-accounts');
 			}
 
 			if (this.authType === AuthenticationType.AzureMFA || this.authType === AuthenticationType.AzureMFAAndUser) {
@@ -708,7 +725,7 @@ export class ConnectionWidget extends lifecycle.Disposable {
 					this._azureAccountDropdown.selectWithOptionName(this.getModelValue(accountName));
 					await this.onAzureAccountSelected();
 					let tenantId = connectionInfo.azureTenantId;
-					let account = find(this._azureAccountList, account => account.key.accountId === this._azureAccountDropdown.value);
+					let account = this._azureAccountList.find(account => account.key.accountId === this._azureAccountDropdown.value);
 					if (account && account.properties.tenants.length > 1) {
 						let tenant = account.properties.tenants.find(tenant => tenant.id === tenantId);
 						if (tenant) {
@@ -827,8 +844,14 @@ export class ConnectionWidget extends lifecycle.Disposable {
 		return this._authTypeSelectBox ? this.getAuthTypeName(this._authTypeSelectBox.value) : undefined;
 	}
 
-	public get azureAccount(): string {
-		return this.authenticationType === AuthenticationType.AzureMFAAndUser || this.authenticationType === AuthenticationType.AzureMFA ? this._azureAccountDropdown.value : undefined;
+	public get authToken(): string | undefined {
+		if (this.authenticationType === AuthenticationType.AzureMFAAndUser || this.authenticationType === AuthenticationType.AzureMFA) {
+			return this._azureAccountDropdown.value;
+		}
+		if (this.authenticationType === AuthenticationType.dSTSAuth) {
+			return this._token;
+		}
+		return undefined;
 	}
 
 	private validateAzureAccountSelection(showMessage: boolean = true): boolean {
@@ -884,7 +907,7 @@ export class ConnectionWidget extends lifecycle.Disposable {
 			model.userName = this.userName;
 			model.password = this.password;
 			model.authenticationType = this.authenticationType;
-			model.azureAccount = this.azureAccount;
+			model.azureAccount = this.authToken;
 			model.savePassword = this._rememberPasswordCheckBox.checked;
 			model.connectionName = this.connectionName;
 			model.databaseName = this.databaseName;
@@ -912,12 +935,12 @@ export class ConnectionWidget extends lifecycle.Disposable {
 	private findGroupId(groupFullName: string): string {
 		let group: IConnectionProfileGroup;
 		if (ConnectionProfileGroup.isRoot(groupFullName)) {
-			group = find(this._serverGroupOptions, g => ConnectionProfileGroup.isRoot(g.name));
+			group = this._serverGroupOptions.find(g => ConnectionProfileGroup.isRoot(g.name));
 			if (group === undefined) {
-				group = find(this._serverGroupOptions, g => g.name === this.DefaultServerGroup.name);
+				group = this._serverGroupOptions.find(g => g.name === this.DefaultServerGroup.name);
 			}
 		} else {
-			group = find(this._serverGroupOptions, g => g.name === groupFullName);
+			group = this._serverGroupOptions.find(g => g.name === groupFullName);
 		}
 		return group ? group.id : undefined;
 	}
@@ -926,7 +949,7 @@ export class ConnectionWidget extends lifecycle.Disposable {
 		if (!displayName) {
 			return undefined;
 		}
-		return find(ConnectionWidget._authTypes, authType => this.getAuthTypeDisplayName(authType) === displayName);
+		return ConnectionWidget._authTypes.find(authType => this.getAuthTypeDisplayName(authType) === displayName);
 	}
 
 	public closeDatabaseDropdown(): void {

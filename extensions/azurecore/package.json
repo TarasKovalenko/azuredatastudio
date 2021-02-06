@@ -22,7 +22,7 @@
     "resourceViewResources": [
       {
         "id": "azure-resources",
-        "name": "Azure",
+        "name": "%azure.resource.view.title%",
         "icon": "./resources/azure.svg"
       }
     ],
@@ -37,7 +37,7 @@
             "description": "%azure.resource.config.filter.description%"
           },
           "azure.tenant.config.filter": {
-            "type":"array",
+            "type": "array",
             "default": [],
             "description": "%azure.tenant.config.filter.description%"
           }
@@ -94,11 +94,6 @@
         "type": "object",
         "title": "Azure",
         "properties": {
-          "azure.enableArcFeatures": {
-            "type": "boolean",
-            "default": false,
-            "description": "%config.enableArcFeatures%"
-          },
           "azure.noSystemKeychain": {
             "type": "boolean",
             "default": true,
@@ -146,7 +141,12 @@
         "icon": "$(refresh)"
       },
       {
-        "command": "azure.resource.refresh",
+        "command": "azure.resource.azureview.refresh",
+        "title": "%azure.resource.refresh.title%",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "azure.resource.connectiondialog.refresh",
         "title": "%azure.resource.refresh.title%",
         "icon": "$(refresh)"
       },
@@ -179,21 +179,23 @@
           "dark": "resources/dark/add_to_server_list_inverse.svg",
           "light": "resources/light/add_to_server_list.svg"
         }
+      },
+      {
+        "command": "azure.dataGrid.openInAzurePortal",
+        "title": "%azure.openInAzurePortal.title%"
+      }
+    ],
+    "connectionTreeProvider": [
+      {
+        "id": "connectionDialog/azureResourceExplorer",
+        "name": "%azure.resource.explorer.title%"
       }
     ],
     "dataExplorer": {
-      "dialog/connection": [
-        {
-          "id": "azureResourceExplorer_dialog",
-          "name": "%azure.resource.explorer.title%",
-          "when": "config.connection.dialog.browse"
-        }
-      ],
       "dataExplorer": [
         {
           "id": "azureResourceExplorer",
-          "name": "%azure.resource.explorer.title%",
-          "when": "!config.connection.dialog.browse"
+          "name": "%azure.resource.explorer.title%"
         }
       ]
     },
@@ -212,11 +214,19 @@
           "when": "false"
         },
         {
-          "command": "azure.resource.refresh",
+          "command": "azure.resource.azureview.refresh",
+          "when": "false"
+        },
+        {
+          "command": "azure.resource.connectiondialog.refresh",
           "when": "false"
         },
         {
           "command": "azure.resource.connectsqlserver",
+          "when": "false"
+        },
+        {
+          "command": "azure.dataGrid.openInAzurePortal",
           "when": "false"
         }
       ],
@@ -244,12 +254,12 @@
           "group": "azurecore"
         },
         {
-          "command": "azure.resource.refresh",
+          "command": "azure.resource.azureview.refresh",
           "when": "viewItem =~ /^azure\\.resource\\.itemType\\.(?:account|subscription|databaseContainer|databaseServerContainer)$/",
           "group": "inline"
         },
         {
-          "command": "azure.resource.refresh",
+          "command": "azure.resource.azureview.refresh",
           "when": "viewItem =~ /^azure\\.resource\\.itemType\\.(?:account|subscription|databaseContainer|databaseServerContainer)$/",
           "group": "azurecore"
         },
@@ -278,6 +288,33 @@
           "when": "viewItem == azure.resource.itemType.account",
           "group": "azurecore"
         }
+      ],
+      "connectionDialog/browseTree": [
+        {
+          "command": "azure.resource.selectsubscriptions",
+          "when": "contextValue == azure.resource.itemType.account",
+          "group": "navigation"
+        },
+        {
+          "command": "azure.resource.connectiondialog.refresh",
+          "when": "contextValue == azure.resource.itemType.account",
+          "group": "navigation"
+        },
+        {
+          "command": "azure.resource.signin",
+          "when": "treeId == connectionDialog/azureResourceExplorer",
+          "group": "navigation"
+        },
+        {
+          "command": "azure.resource.refreshall",
+          "when": "treeId == connectionDialog/azureResourceExplorer",
+          "group": "navigation"
+        }
+      ],
+      "dataGrid/item/context": [
+        {
+          "command": "azure.dataGrid.openInAzurePortal"
+        }
       ]
     },
     "hasAzureResourceProviders": true
@@ -285,7 +322,7 @@
   "dependencies": {
     "@azure/arm-resourcegraph": "^2.0.0",
     "@azure/arm-subscriptions": "1.0.0",
-    "axios": "^0.19.2",
+    "axios": "^0.21.1",
     "qs": "^6.9.1",
     "vscode-nls": "^4.0.0",
     "ws": "^7.2.0"

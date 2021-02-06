@@ -23,7 +23,7 @@ import { ResourceLabels, IResourceLabel } from 'vs/workbench/browser/labels';
 import { ActionBar } from 'vs/base/browser/ui/actionbar/actionbar';
 import { URI } from 'vs/base/common/uri';
 import { dirname, basename } from 'vs/base/common/resources';
-import { LIGHT, FileThemeIcon, FolderThemeIcon, registerThemingParticipant, ThemeIcon, IThemeService } from 'vs/platform/theme/common/themeService';
+import { FileThemeIcon, FolderThemeIcon, registerThemingParticipant, ThemeIcon, IThemeService } from 'vs/platform/theme/common/themeService';
 import { FileKind } from 'vs/platform/files/common/files';
 import { WorkbenchAsyncDataTree } from 'vs/platform/list/browser/listService';
 import { localize } from 'vs/nls';
@@ -37,12 +37,12 @@ import { FuzzyScore, createMatches } from 'vs/base/common/filters';
 import { CollapseAllAction } from 'vs/base/browser/ui/tree/treeDefaults';
 import { isFalsyOrWhitespace } from 'vs/base/common/strings';
 import { SIDE_BAR_BACKGROUND, PANEL_BACKGROUND } from 'vs/workbench/common/theme';
-import { firstIndex } from 'vs/base/common/arrays';
 import { ITreeItem, ITreeView } from 'sql/workbench/common/views';
 import { UserCancelledConnectionError } from 'sql/base/common/errors';
 import { IOEShimService } from 'sql/workbench/services/objectExplorer/browser/objectExplorerViewTreeShim';
 import { NodeContextKey } from 'sql/workbench/contrib/views/browser/nodeContext';
 import { ActionViewItem } from 'vs/base/browser/ui/actionbar/actionViewItems';
+import { ColorScheme } from 'vs/platform/theme/common/theme';
 
 class Root implements ITreeItem {
 	label = { label: 'root' };
@@ -359,8 +359,8 @@ export class TreeView extends Disposable implements ITreeView {
 		this.domNode = DOM.$('.tree-explorer-viewlet-tree-view');
 		this.messageElement = DOM.append(this.domNode, DOM.$('.message'));
 		this.treeContainer = DOM.append(this.domNode, DOM.$('.customview-tree'));
-		DOM.addClass(this.treeContainer, 'file-icon-themable-tree');
-		DOM.addClass(this.treeContainer, 'show-file-icons');
+		this.treeContainer.classList.add('file-icon-themable-tree');
+		this.treeContainer.classList.add('show-file-icons');
 		const focusTracker = this._register(DOM.trackFocus(this.domNode));
 		this._register(focusTracker.onDidFocus(() => this.focused = true));
 		this._register(focusTracker.onDidBlur(() => this.focused = false));
@@ -503,7 +503,7 @@ export class TreeView extends Disposable implements ITreeView {
 	}
 
 	private showMessage(message: string): void {
-		DOM.removeClass(this.messageElement, 'hide');
+		this.messageElement.classList.remove('hide');
 		this.resetMessageElement();
 		this._messageValue = message;
 		if (!isFalsyOrWhitespace(this._message)) {
@@ -514,7 +514,7 @@ export class TreeView extends Disposable implements ITreeView {
 
 	private hideMessage(): void {
 		this.resetMessageElement();
-		DOM.addClass(this.messageElement, 'hide');
+		this.messageElement.classList.add('hide');
 		this.layout(this._height, this._width);
 	}
 
@@ -625,10 +625,10 @@ export class TreeView extends Disposable implements ITreeView {
 		const isTreeEmpty = !this.root.children || this.root.children.length === 0;
 		// Hide tree container only when there is a message and tree is empty and not refreshing
 		if (this._messageValue && isTreeEmpty && !this.refreshing) {
-			DOM.addClass(this.treeContainer, 'hide');
+			this.treeContainer.classList.add('hide');
 			this.domNode.setAttribute('tabindex', '0');
 		} else {
-			DOM.removeClass(this.treeContainer, 'hide');
+			this.treeContainer.classList.remove('hide');
 			this.domNode.removeAttribute('tabindex');
 		}
 	}
@@ -756,7 +756,7 @@ class TreeRenderer extends Disposable implements ITreeRenderer<ITreeItem, FuzzyS
 	}
 
 	renderTemplate(container: HTMLElement): ITreeExplorerTemplateData {
-		DOM.addClass(container, 'custom-view-tree-node-item');
+		container.classList.add('custom-view-tree-node-item');
 
 		const icon = DOM.append(container, DOM.$('.custom-view-tree-node-item-icon'));
 
@@ -793,7 +793,7 @@ class TreeRenderer extends Disposable implements ITreeRenderer<ITreeItem, FuzzyS
 			}
 			return ({ start, end });
 		}) : undefined;
-		const icon = this.themeService.getColorTheme().type === LIGHT ? node.icon : node.iconDark;
+		const icon = this.themeService.getColorTheme().type === ColorScheme.LIGHT ? node.icon : node.iconDark;
 		const iconUrl = icon ? URI.revive(icon) : null;
 		const title = node.tooltip ? isString(node.tooltip) ? node.tooltip : undefined : resource ? undefined : label;
 		const sqlIcon = node.sqlIcon;
@@ -901,7 +901,7 @@ class Aligner extends Disposable {
 	}
 
 	private hasIcon(node: ITreeItem): boolean {
-		const icon = this.themeService.getColorTheme().type === LIGHT ? node.icon : node.iconDark;
+		const icon = this.themeService.getColorTheme().type === ColorScheme.LIGHT ? node.icon : node.iconDark;
 		if (icon) {
 			return true;
 		}
@@ -975,7 +975,7 @@ class TreeMenus extends Disposable implements IDisposable {
 	}
 
 	private mergeActions(actions: IAction[][]): IAction[] {
-		return actions.reduce((p, c) => p.concat(...c.filter(a => firstIndex(p, x => x.id === a.id) === -1)), [] as IAction[]);
+		return actions.reduce((p, c) => p.concat(...c.filter(a => p.findIndex(x => x.id === a.id) === -1)), [] as IAction[]);
 	}
 
 	private getActions(menuId: MenuId, context: { key: string, value?: string }): { primary: IAction[]; secondary: IAction[]; } {

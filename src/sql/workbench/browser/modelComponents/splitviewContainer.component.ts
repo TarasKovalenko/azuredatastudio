@@ -5,7 +5,7 @@
 import 'vs/css!./media/flexContainer';
 import { Component, Input, Inject, ChangeDetectorRef, forwardRef, ElementRef, OnDestroy } from '@angular/core';
 
-import { FlexItemLayout, SplitViewLayout, SplitViewContainer } from 'azdata';
+import { FlexItemLayout, SplitViewLayout, SplitViewContainer, CssStyles } from 'azdata';
 import { FlexItem } from './flexContainer.component';
 import { ContainerBase, ComponentBase } from 'sql/workbench/browser/modelComponents/componentBase';
 import { Event } from 'vs/base/common/event';
@@ -37,8 +37,7 @@ class SplitPane implements IView {
 
 @Component({
 	template: `
-		<div *ngIf="items" class="splitViewContainer" [style.flexFlow]="flexFlow" [style.justifyContent]="justifyContent" [style.position]="position"
-				[style.alignItems]="alignItems" [style.alignContent]="alignContent" [style.height]="height" [style.width]="width">
+		<div *ngIf="items" class="splitViewContainer" [ngStyle]="CSSStyles">
 			<div *ngFor="let item of items" [style.flex]="getItemFlex(item)" [style.textAlign]="textAlign" [style.order]="getItemOrder(item)" [ngStyle]="getItemStyles(item)">
 				<model-component-wrapper [descriptor]="item.descriptor" [modelStore]="modelStore">
 				</model-component-wrapper>
@@ -65,16 +64,12 @@ export default class SplitViewContainerImpl extends ContainerBase<FlexItemLayout
 	constructor(
 		@Inject(forwardRef(() => ChangeDetectorRef)) changeRef: ChangeDetectorRef,
 		@Inject(forwardRef(() => ElementRef)) el: ElementRef,
-		@Inject(ILogService) private readonly logService: ILogService
+		@Inject(ILogService) readonly logService: ILogService
 	) {
-		super(changeRef, el);
+		super(changeRef, el, logService);
 		this._flexFlow = '';	// default
 		this._justifyContent = '';	// default
 		this._orientation = Orientation.VERTICAL; // default
-	}
-
-	ngOnInit(): void {
-		this.baseInit();
 	}
 
 	ngOnDestroy(): void {
@@ -83,6 +78,7 @@ export default class SplitViewContainerImpl extends ContainerBase<FlexItemLayout
 
 	ngAfterViewInit(): void {
 		this._splitView = this._register(new SplitView(this._el.nativeElement, { orientation: this._orientation }));
+		this.baseInit();
 	}
 
 	private GetCorrespondingView(component: IComponent, orientation: Orientation): IView {
@@ -167,10 +163,24 @@ export default class SplitViewContainerImpl extends ContainerBase<FlexItemLayout
 	public getItemFlex(item: FlexItem): string {
 		return item.config ? item.config.flex : '1 1 auto';
 	}
+
 	public getItemOrder(item: FlexItem): number {
 		return item.config ? item.config.order : 0;
 	}
+
 	public getItemStyles(item: FlexItem): { [key: string]: string } {
 		return item.config && item.config.CSSStyles ? item.config.CSSStyles : {};
+	}
+
+	public get CSSStyles(): CssStyles {
+		return this.mergeCss(super.CSSStyles, {
+			'width': this.getWidth(),
+			'height': this.getHeight(),
+			'flexFlow': this.flexFlow,
+			'justifyContent': this.justifyContent,
+			'position': this.position,
+			'alignItems': this.alignItems,
+			'alignContent': this.alignContent
+		});
 	}
 }

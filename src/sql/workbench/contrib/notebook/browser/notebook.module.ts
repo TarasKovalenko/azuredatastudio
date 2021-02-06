@@ -28,12 +28,13 @@ import { IMimeComponentRegistry, Extensions } from 'sql/workbench/contrib/notebo
 import { Registry } from 'vs/platform/registry/common/platform';
 import { LinkHandlerDirective } from 'sql/workbench/contrib/notebook/browser/cellViews/linkHandler.directive';
 import { IBootstrapParams, ISelector } from 'sql/workbench/services/bootstrap/common/bootstrapParams';
-import { ICellComponenetRegistry, Extensions as OutputComponentExtensions } from 'sql/platform/notebooks/common/outputRegistry';
+import { ICellComponentRegistry, Extensions as OutputComponentExtensions } from 'sql/platform/notebooks/common/outputRegistry';
 import { CollapseComponent } from 'sql/workbench/contrib/notebook/browser/cellViews/collapse.component';
 import { MarkdownToolbarComponent } from 'sql/workbench/contrib/notebook/browser/cellViews/markdownToolbar.component';
 import { CellToolbarComponent } from 'sql/workbench/contrib/notebook/browser/cellViews/cellToolbar.component';
+import { NotebookEditorComponent } from 'sql/workbench/contrib/notebook/browser/notebookEditor.component';
 
-const outputComponentRegistry = Registry.as<ICellComponenetRegistry>(OutputComponentExtensions.CellComponentContributions);
+const outputComponentRegistry = Registry.as<ICellComponentRegistry>(OutputComponentExtensions.CellComponentContributions);
 
 export const NotebookModule = (params, selector: string, instantiationService: IInstantiationService): any => {
 	let outputComponents = Registry.as<IMimeComponentRegistry>(Extensions.MimeComponentContribution).getAllCtors();
@@ -52,6 +53,7 @@ export const NotebookModule = (params, selector: string, instantiationService: I
 			MarkdownToolbarComponent,
 			PlaceholderCellComponent,
 			NotebookComponent,
+			NotebookEditorComponent,
 			ComponentHostDirective,
 			OutputAreaComponent,
 			OutputComponent,
@@ -62,6 +64,7 @@ export const NotebookModule = (params, selector: string, instantiationService: I
 		],
 		entryComponents: [
 			NotebookComponent,
+			NotebookEditorComponent,
 			...outputComponents
 		],
 		imports: [
@@ -86,7 +89,7 @@ export const NotebookModule = (params, selector: string, instantiationService: I
 		}
 
 		ngDoBootstrap(appRef: ApplicationRef) {
-			const factoryWrapper: any = this._resolver.resolveComponentFactory(NotebookComponent);
+			const factoryWrapper: any = this._resolver.resolveComponentFactory(NotebookEditorComponent);
 			factoryWrapper.factory.selector = this.selector;
 			appRef.bootstrap(factoryWrapper);
 		}

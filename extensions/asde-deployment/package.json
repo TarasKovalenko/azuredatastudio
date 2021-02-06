@@ -2,7 +2,7 @@
   "name": "asde-deployment",
   "displayName": "%extension-displayName%",
   "description": "%extension-description%",
-  "version": "0.2.0",
+  "version": "0.4.1",
   "publisher": "Microsoft",
   "preview": true,
   "license": "https://raw.githubusercontent.com/Microsoft/azuredatastudio/main/LICENSE.txt",
@@ -24,10 +24,11 @@
         "displayName": "%resource-type-sql-edge-display-name%",
         "description": "%resource-type-sql-edge-description%",
         "platforms": "*",
-        "icon": {
-          "light": "./images/sqldb_edge.svg",
-          "dark": "./images/sqldb_edge_inverse.svg"
-        },
+        "icon": "./images/sqldb_edge.svg",
+        "tags": [
+          "Hybrid",
+          "SQL Server"
+        ],
         "options": [
           {
             "name": "type",
@@ -113,7 +114,7 @@
                           "label": "%docker-repository-field%",
                           "variableName": "AZDATA_NB_VAR_DOCKER_REPOSITORY",
                           "type": "text",
-                          "defaultValue": "azure-sql-edge-developer",
+                          "defaultValue": "azure-sql-edge",
                           "required": true
                         },
                         {
@@ -234,7 +235,7 @@
                           "label": "%docker-repository-field%",
                           "variableName": "AZDATA_NB_VAR_DOCKER_REPOSITORY",
                           "type": "text",
-                          "defaultValue": "azure-sql-edge-developer",
+                          "defaultValue": "azure-sql-edge",
                           "required": true
                         },
                         {
@@ -295,7 +296,6 @@
                           "defaultValue": "westus",
                           "required": true,
                           "locationVariableName": "AZDATA_NB_VAR_ASDE_AZURE_LOCATION",
-                          "displayLocationVariableName": "AZDATA_NB_VAR_ASDE_AZURE_LOCATION_TEXT",
                           "locations": [
                             "australiaeast",
                             "australiasoutheast",
@@ -337,7 +337,14 @@
                           "type": "password",
                           "confirmationRequired": true,
                           "confirmationLabel": "%vm_password_confirm%",
-                          "required": true
+                          "required": true,
+                          "validations": [
+                            {
+                              "type": "regex_match",
+                              "regex": "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[\\W_])[A-Za-z\\d\\W_]{12,123}$",
+                              "description": "%vm_password_validation_error_message%"
+                            }
+                          ]
                         }
                       ]
                     },
@@ -363,14 +370,17 @@
                           "required": true
                         },
                         {
-                          "label": "%dacpac_path%",
-                          "variableName": "AZDATA_NB_VAR_ASDE_DACPAC_PATH",
+                          "label": "%package_path%",
+                          "description": "%package_path_description%",
+                          "variableName": "AZDATA_NB_VAR_ASDE_PACKAGE_PATH",
                           "type": "file_picker",
                           "required": false,
                           "filter": {
-                            "displayName": "%dacpac-zip-files%",
+                            "displayName": "%package-files%",
                             "fileTypes": [
-                              "zip"
+                              "zip",
+                              "bacpac",
+                              "dacpac"
                             ]
                           }
                         }
@@ -383,7 +393,7 @@
             "requiredTools": [
               {
                 "name": "azure-cli",
-                "version": "2.9.1"
+                "version": "2.13.0"
               }
             ],
             "when": "type=azure-create-new"
@@ -450,14 +460,17 @@
                           "required": true
                         },
                         {
-                          "label": "%dacpac_path%",
-                          "variableName": "AZDATA_NB_VAR_ASDE_DACPAC_PATH",
+                          "label": "%package_path%",
+                          "description": "%package_path_description%",
+                          "variableName": "AZDATA_NB_VAR_ASDE_PACKAGE_PATH",
                           "type": "file_picker",
                           "required": false,
                           "filter": {
-                            "displayName": "%dacpac-zip-files%",
+                            "displayName": "%package-files%",
                             "fileTypes": [
-                              "zip"
+                              "zip",
+                              "bacpac",
+                              "dacpac"
                             ]
                           }
                         }
@@ -470,7 +483,7 @@
             "requiredTools": [
               {
                 "name": "azure-cli",
-                "version": "2.9.1"
+                "version": "2.13.0"
               }
             ],
             "when": "type=azure-single-device"
@@ -540,14 +553,17 @@
                           "required": true
                         },
                         {
-                          "label": "%dacpac_path%",
-                          "variableName": "AZDATA_NB_VAR_ASDE_DACPAC_PATH",
+                          "label": "%package_path%",
+                          "description": "%package_path_description%",
+                          "variableName": "AZDATA_NB_VAR_ASDE_PACKAGE_PATH",
                           "type": "file_picker",
                           "required": false,
                           "filter": {
-                            "displayName": "%dacpac-zip-files%",
+                            "displayName": "%package-files%",
                             "fileTypes": [
-                              "zip"
+                              "zip",
+                              "bacpac",
+                              "dacpac"
                             ]
                           }
                         }
@@ -560,26 +576,34 @@
             "requiredTools": [
               {
                 "name": "azure-cli",
-                "version": "2.9.1"
+                "version": "2.13.0"
               }
             ],
             "when": "type=azure-multi-device"
           }
         ],
-        "agreement": {
-          "template": "%edge-agreement%",
-          "links": [
-            {
-              "text": "%microsoft-privacy-statement%",
-              "url": "https://go.microsoft.com/fwlink/?LinkId=853010"
-            },
-            {
-              "text": "%edge-eula%",
-              "url": "https://go.microsoft.com/fwlink/?linkid=2128283"
-            }
-          ]
-        }
+        "agreements": [
+          {
+            "template": "%edge-agreement%",
+            "links": [
+              {
+                "text": "%microsoft-privacy-statement%",
+                "url": "https://go.microsoft.com/fwlink/?LinkId=853010"
+              },
+              {
+                "text": "%edge-eula%",
+                "url": "https://go.microsoft.com/fwlink/?linkid=2128283"
+              }
+            ],
+            "when": "true"
+          }
+        ]
       }
     ]
+  },
+  "__metadata": {
+    "id": "76",
+    "publisherDisplayName": "Microsoft",
+    "publisherId": "Microsoft"
   }
 }

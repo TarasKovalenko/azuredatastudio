@@ -27,6 +27,7 @@ import { values } from 'vs/base/common/collections';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
 import { IComponentDescriptor, IComponent, IModelStore } from 'sql/platform/dashboard/browser/interfaces';
 import { convertSizeToNumber } from 'sql/base/browser/dom';
+import { ILogService } from 'vs/platform/log/common/log';
 
 class Root implements ITreeComponentItem {
 	label = {
@@ -42,7 +43,7 @@ class Root implements ITreeComponentItem {
 @Component({
 	selector: 'modelview-tree',
 	template: `
-		<div #input style="width: 100%;height:100%"></div>
+		<div #input [ngStyle]="CSSStyles"></div>
 	`
 })
 export default class TreeComponent extends ComponentBase<azdata.TreeProperties> implements IComponent, OnDestroy, AfterViewInit {
@@ -57,20 +58,17 @@ export default class TreeComponent extends ComponentBase<azdata.TreeProperties> 
 		@Inject(forwardRef(() => ChangeDetectorRef)) changeRef: ChangeDetectorRef,
 		@Inject(IThemeService) private themeService: IThemeService,
 		@Inject(IInstantiationService) private _instantiationService: IInstantiationService,
-		@Inject(forwardRef(() => ElementRef)) el: ElementRef
+		@Inject(forwardRef(() => ElementRef)) el: ElementRef,
+		@Inject(ILogService) logService: ILogService
 	) {
-		super(changeRef, el);
-	}
-
-	ngOnInit(): void {
-		this.baseInit();
-
+		super(changeRef, el, logService);
 	}
 
 	ngAfterViewInit(): void {
 		if (this._inputContainer) {
 			this.createTreeControl();
 		}
+		this.baseInit();
 	}
 
 	ngOnDestroy(): void {
@@ -159,7 +157,9 @@ export default class TreeComponent extends ComponentBase<azdata.TreeProperties> 
 
 	public setProperties(properties: { [key: string]: any; }): void {
 		super.setProperties(properties);
-		this._treeRenderer.options.withCheckbox = this.withCheckbox;
+		if (this._treeRenderer) {
+			this._treeRenderer.options.withCheckbox = this.withCheckbox;
+		}
 	}
 
 	public get withCheckbox(): boolean {
@@ -168,5 +168,12 @@ export default class TreeComponent extends ComponentBase<azdata.TreeProperties> 
 
 	public set withCheckbox(newValue: boolean) {
 		this.setPropertyFromUI<boolean>((properties, value) => { properties.withCheckbox = value; }, newValue);
+	}
+
+	public get CSSStyles(): azdata.CssStyles {
+		return this.mergeCss(super.CSSStyles, {
+			'width': '100%',
+			'height': '100%'
+		});
 	}
 }

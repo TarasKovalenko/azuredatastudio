@@ -34,13 +34,18 @@ export class IconPathHelper {
 	public static properties: IconPath;
 	public static networking: IconPath;
 	public static refresh: IconPath;
+	public static reset: IconPath;
 	public static support: IconPath;
 	public static wrench: IconPath;
 	public static miaa: IconPath;
 	public static controller: IconPath;
 	public static health: IconPath;
 	public static success: IconPath;
+	public static save: IconPath;
+	public static discard: IconPath;
 	public static fail: IconPath;
+	public static information: IconPath;
+	public static gear: IconPath;
 
 	public static setExtensionContext(context: vscode.ExtensionContext) {
 		IconPathHelper.context = context;
@@ -92,6 +97,10 @@ export class IconPathHelper {
 			light: context.asAbsolutePath('images/refresh.svg'),
 			dark: context.asAbsolutePath('images/refresh.svg')
 		};
+		IconPathHelper.reset = {
+			light: context.asAbsolutePath('images/reset.svg'),
+			dark: context.asAbsolutePath('images/reset.svg')
+		};
 		IconPathHelper.support = {
 			light: context.asAbsolutePath('images/support.svg'),
 			dark: context.asAbsolutePath('images/support.svg')
@@ -116,9 +125,25 @@ export class IconPathHelper {
 			light: context.asAbsolutePath('images/success.svg'),
 			dark: context.asAbsolutePath('images/success.svg'),
 		};
+		IconPathHelper.save = {
+			light: context.asAbsolutePath('images/save.svg'),
+			dark: context.asAbsolutePath('images/save.svg'),
+		};
+		IconPathHelper.discard = {
+			light: context.asAbsolutePath('images/discard.svg'),
+			dark: context.asAbsolutePath('images/discard.svg'),
+		};
 		IconPathHelper.fail = {
 			light: context.asAbsolutePath('images/fail.svg'),
 			dark: context.asAbsolutePath('images/fail.svg'),
+		};
+		IconPathHelper.information = {
+			light: context.asAbsolutePath('images/information.svg'),
+			dark: context.asAbsolutePath('images/information.svg'),
+		};
+		IconPathHelper.gear = {
+			light: context.asAbsolutePath('images/gear.svg'),
+			dark: context.asAbsolutePath('images/gear.svg'),
 		};
 	}
 }

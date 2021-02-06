@@ -9,7 +9,7 @@ import {
 	ElementRef, OnDestroy, AfterViewInit
 } from '@angular/core';
 
-import { GroupLayout, GroupContainerProperties } from 'azdata';
+import { GroupLayout, GroupContainerProperties, CssStyles } from 'azdata';
 
 import { ContainerBase } from 'sql/workbench/browser/modelComponents/componentBase';
 import { endsWith } from 'vs/base/common/strings';
@@ -17,6 +17,7 @@ import { StandardKeyboardEvent } from 'vs/base/browser/keyboardEvent';
 import { KeyCode } from 'vs/base/common/keyCodes';
 import * as DOM from 'vs/base/browser/dom';
 import { IComponent, IComponentDescriptor, IModelStore } from 'sql/platform/dashboard/browser/interfaces';
+import { ILogService } from 'vs/platform/log/common/log';
 
 @Component({
 	selector: 'modelview-groupContainer',
@@ -24,7 +25,7 @@ import { IComponent, IComponentDescriptor, IModelStore } from 'sql/platform/dash
 		<div *ngIf="hasHeader()" [class]="getHeaderClass()" (click)="changeState()" (keydown)="onKeyDown($event)" [tabindex]="isCollapsible()? 0 : -1" [attr.role]="isCollapsible() ? 'button' : null" [attr.aria-expanded]="isCollapsible() ? !collapsed : null">
 				{{_containerLayout.header}}
 		</div>
-		<div #container *ngIf="items" class="modelview-group-container" [style.width]="getContainerWidth()" [style.display]="getContainerDisplayStyle()">
+		<div #container *ngIf="items" class="modelview-group-container" [ngStyle]="CSSStyles">
 			<ng-container *ngFor="let item of items">
 			<div class="modelview-group-row" >
 				<div  class="modelview-group-cell">
@@ -44,20 +45,17 @@ export default class GroupContainer extends ContainerBase<GroupLayout, GroupCont
 
 	constructor(
 		@Inject(forwardRef(() => ChangeDetectorRef)) changeRef: ChangeDetectorRef,
-		@Inject(forwardRef(() => ElementRef)) el: ElementRef) {
-		super(changeRef, el);
-		this.collapsed = false;
+		@Inject(forwardRef(() => ElementRef)) el: ElementRef,
+		@Inject(ILogService) logService: ILogService) {
+		super(changeRef, el, logService);
 	}
 
-	ngOnInit(): void {
+	ngAfterViewInit(): void {
 		this.baseInit();
 	}
 
 	ngOnDestroy(): void {
 		this.baseDestroy();
-	}
-
-	ngAfterViewInit(): void {
 	}
 
 	onKeyDown(event: KeyboardEvent): void {
@@ -133,5 +131,12 @@ export default class GroupContainer extends ContainerBase<GroupLayout, GroupCont
 			this.collapsed = !this.collapsed;
 			this._changeRef.detectChanges();
 		}
+	}
+
+	public get CSSStyles(): CssStyles {
+		return this.mergeCss(super.CSSStyles, {
+			'display': this.getContainerDisplayStyle(),
+			'width': this.getContainerWidth(),
+		});
 	}
 }

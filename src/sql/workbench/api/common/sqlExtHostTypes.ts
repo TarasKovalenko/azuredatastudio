@@ -174,13 +174,17 @@ export enum ModelComponentTypes {
 	Hyperlink,
 	Image,
 	RadioCardGroup,
+	ListView,
 	TabbedPanel,
 	Separator,
-	PropertiesContainer
+	PropertiesContainer,
+	InfoBox
 }
 
 export enum ModelViewAction {
-	SelectTab = 'selectTab'
+	SelectTab = 'selectTab',
+	AppendData = 'appendData',
+	Filter = 'filter'
 }
 
 export enum ColumnSizingMode {
@@ -276,6 +280,7 @@ export interface IModelViewWizardPageDetails {
 	enabled: boolean;
 	customButtons: number[];
 	description: string;
+	pageName?: string;
 }
 
 export interface IModelViewWizardDetails {
@@ -409,23 +414,13 @@ export enum AzureResource {
 	AzureKeyVault = 3,
 	Graph = 4,
 	MicrosoftResourceManagement = 5,
-	AzureDevOps = 6
+	AzureDevOps = 6,
+	MsGraph = 7
 }
 
 export class TreeItem extends vsExtTypes.TreeItem {
 	payload?: IConnectionProfile;
 	providerHandle?: string;
-}
-
-export interface ServerInfoOption {
-	isBigDataCluster: boolean;
-	clusterEndpoints: ClusterEndpoint;
-}
-
-export interface ClusterEndpoint {
-	serviceName: string;
-	ipAddress: string;
-	port: number;
 }
 
 export class SqlThemeIcon {
@@ -820,7 +815,9 @@ export enum SchemaObjectType {
 export enum ColumnType {
 	text = 0,
 	checkBox = 1,
-	button = 2
+	button = 2,
+	icon = 3,
+	hyperlink = 4
 }
 
 export enum ActionOnCellCheckboxCheck {
@@ -861,4 +858,10 @@ export enum SqlAssessmentResultItemKind {
 	RealResult = 0,
 	Warning = 1,
 	Error = 2
+}
+
+export enum ButtonType {
+	File = 'File',
+	Normal = 'Normal',
+	Informational = 'Informational'
 }

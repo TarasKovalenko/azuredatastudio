@@ -8,6 +8,7 @@ import * as vscode from 'vscode';
 import { promises as fs } from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import * as resourceDeployment from 'resource-deployment';
 
 import { AppContext } from './appContext';
 import { AzureAccountProviderService } from './account-provider/azureAccountProviderService';
@@ -43,7 +44,8 @@ import * as loc from './localizedConstants';
 import * as constants from './constants';
 import { AzureResourceGroupService } from './azureResource/providers/resourceGroup/resourceGroupService';
 import { Logger } from './utils/Logger';
-import { TokenCredentials } from '@azure/ms-rest-js';
+import { ConnectionDialogTreeProvider } from './azureResource/tree/connectionDialogTreeProvider';
+import { AzureDataGridProvider } from './azureDataGridProvider';
 
 let extensionContext: vscode.ExtensionContext;
 
@@ -84,71 +86,67 @@ export async function activate(context: vscode.ExtensionContext): Promise<azurec
 
 	registerAzureServices(appContext);
 	const azureResourceTree = new AzureResourceTreeProvider(appContext);
+	const connectionDialogTree = new ConnectionDialogTreeProvider(appContext);
 	pushDisposable(vscode.window.registerTreeDataProvider('azureResourceExplorer', azureResourceTree));
-	pushDisposable(vscode.window.registerTreeDataProvider('azureResourceExplorer_dialog', azureResourceTree));
+	pushDisposable(vscode.window.registerTreeDataProvider('connectionDialog/azureResourceExplorer', connectionDialogTree));
 	pushDisposable(vscode.workspace.onDidChangeConfiguration(e => onDidChangeConfiguration(e), this));
-	registerAzureResourceCommands(appContext, azureResourceTree);
-
-	const typesClause = [
-		azureResource.AzureResourceType.sqlDatabase,
-		azureResource.AzureResourceType.sqlServer,
-		azureResource.AzureResourceType.sqlManagedInstance,
-		azureResource.AzureResourceType.postgresServer,
-		azureResource.AzureResourceType.azureArcService,
-		azureResource.AzureResourceType.azureArcSqlManagedInstance,
-		azureResource.AzureResourceType.azureArcPostgresServer
-	].map(type => `type == "${type}"`).join(' or ');
-	azdata.dataprotocol.registerDataGridProvider({
-		providerId: constants.dataGridProviderId,
-		getDataGridItems: async () => {
-			const accounts = await azdata.accounts.getAllAccounts();
-			const items: any[] = [];
-			await Promise.all(accounts.map(async (account) => {
-				await Promise.all(account.properties.tenants.map(async (tenant: { id: string; }) => {
-					try {
-						const tokenResponse = await azdata.accounts.getAccountSecurityToken(account, tenant.id, azdata.AzureResource.ResourceManagement);
-						const token = tokenResponse.token;
-						const tokenType = tokenResponse.tokenType;
-						const credential = new TokenCredentials(token, tokenType);
-						const subscriptionService = appContext.getService<IAzureResourceSubscriptionService>(AzureResourceServiceNames.subscriptionService);
-						const subscriptions = await subscriptionService.getSubscriptions(account, credential, tenant.id);
-						try {
-							const newItems = (await azureResourceUtils.runResourceQuery(account, subscriptions, true, `where ${typesClause}`)).resources
-								.map(item => {
-									return {
-										...item,
-										subscriptionName: subscriptions.find(subscription => subscription.id === item.subscriptionId)?.name ?? item.subscriptionId,
-										locationDisplayName: utils.getRegionDisplayName(item.location),
-										typeDisplayName: utils.getResourceTypeDisplayName(item.type),
-										iconPath: utils.getResourceTypeIcon(appContext, item.type)
-									};
-								});
-							items.push(...newItems);
-						} catch (err) {
-							console.log(err);
-						}
-					} catch (err) {
-						console.log(err);
-					}
-				}));
-			}));
-			return items;
-		},
-		getDataGridColumns: async () => {
-			return [
-				{ id: 'icon', type: 'image', field: 'iconPath', name: '', width: 25, sortable: false, filterable: false, resizable: false, tooltip: loc.typeIcon },
-				{ id: 'name', type: 'text', field: 'name', name: loc.name, width: 150 },
-				{ id: 'type', type: 'text', field: 'typeDisplayName', name: loc.resourceType, width: 150 },
-				{ id: 'type', type: 'text', field: 'resourceGroup', name: loc.resourceGroup, width: 150 },
-				{ id: 'location', type: 'text', field: 'locationDisplayName', name: loc.location, width: 150 },
-				{ id: 'subscriptionId', type: 'text', field: 'subscriptionName', name: loc.subscription, width: 150 }
-			];
+	registerAzureResourceCommands(appContext, azureResourceTree, connectionDialogTree);
+	azdata.dataprotocol.registerDataGridProvider(new AzureDataGridProvider(appContext));
+	vscode.commands.registerCommand('azure.dataGrid.openInAzurePortal', async (item: azdata.DataGridItem) => {
+		const portalEndpoint = item.portalEndpoint;
+		const subscriptionId = item.subscriptionId;
+		const resourceGroup = item.resourceGroup;
+		const type = item.type;
+		const name = item.name;
+		if (portalEndpoint && subscriptionId && resourceGroup && type && name) {
+			await vscode.env.openExternal(vscode.Uri.parse(`${portalEndpoint}/#resource/subscriptions/${subscriptionId}/resourceGroups/${resourceGroup}/providers/${type}/${name}`));
+		} else {
+			console.log(`Missing required values - subscriptionId : ${subscriptionId} resourceGroup : ${resourceGroup} type: ${type} name: ${name}`);
+			vscode.window.showErrorMessage(loc.unableToOpenAzureLink);
 		}
 	});
 
+	// Don't block on this since there's a bit of a circular dependency here with the extension activation since resource deployment
+	// depends on this extension too. It's fine to wait a bit for that to finish before registering the provider
+	vscode.extensions.getExtension(resourceDeployment.extension.name).activate().then((api: resourceDeployment.IExtension) => {
+		context.subscriptions.push(api.registerValueProvider({
+			id: 'subscription-id-to-tenant-id',
+			getValue: async (triggerValue: string) => {
+				if (triggerValue === '') {
+					return '';
+				}
+				let accounts: azdata.Account[] = [];
+				try {
+					accounts = await azdata.accounts.getAllAccounts();
+				} catch (err) {
+					console.warn(`Error fetching accounts for subscription-id-to-tenant-id provider : ${err}`);
+					return '';
+				}
+
+				for (const account of accounts) {
+					// Ignore any errors - they'll be logged in the called function and we still want to look
+					// at any subscriptions that are returned - worst case we'll just return an empty string if we didn't
+					// find the matching subscription
+					const subs = await azureResourceUtils.getSubscriptions(appContext, account, true);
+					const sub = subs.subscriptions.find(sub => sub.id === triggerValue);
+					if (sub) {
+						return sub.tenant;
+					}
+
+				}
+				console.error(`Unable to find subscription with ID ${triggerValue} when mapping subscription ID to tenant ID`);
+				return '';
+			}
+		}));
+	});
+
 	return {
-		getSubscriptions(account?: azdata.Account, ignoreErrors?: boolean): Thenable<azurecore.GetSubscriptionsResult> { return azureResourceUtils.getSubscriptions(appContext, account, ignoreErrors); },
-		getResourceGroups(account?: azdata.Account, subscription?: azureResource.AzureResourceSubscription, ignoreErrors?: boolean): Thenable<azurecore.GetResourceGroupsResult> { return azureResourceUtils.getResourceGroups(appContext, account, subscription, ignoreErrors); },
+		getSubscriptions(account?: azdata.Account, ignoreErrors?: boolean, selectedOnly: boolean = false): Promise<azurecore.GetSubscriptionsResult> {
+			return selectedOnly
+				? azureResourceUtils.getSelectedSubscriptions(appContext, account, ignoreErrors)
+				: azureResourceUtils.getSubscriptions(appContext, account, ignoreErrors);
+		},
+		getResourceGroups(account?: azdata.Account, subscription?: azureResource.AzureResourceSubscription, ignoreErrors?: boolean): Promise<azurecore.GetResourceGroupsResult> { return azureResourceUtils.getResourceGroups(appContext, account, subscription, ignoreErrors); },
 		provideResources(): azureResource.IAzureResourceProvider[] {
 			const arcFeaturedEnabled = vscode.workspace.getConfiguration(constants.extensionConfigSectionName).get('enableArcFeatures');
 			const providers: azureResource.IAzureResourceProvider[] = [
@@ -165,6 +163,47 @@ export async function activate(context: vscode.ExtensionContext): Promise<azurec
 				);
 			}
 			return providers;
+		},
+		getSqlManagedInstances(account: azdata.Account,
+			subscriptions: azureResource.AzureResourceSubscription[],
+			ignoreErrors: boolean): Promise<azurecore.GetSqlManagedInstancesResult> {
+			return azureResourceUtils.runResourceQuery(account, subscriptions, ignoreErrors, `where type == "${azureResource.AzureResourceType.sqlManagedInstance}"`);
+		},
+		getSqlServers(account: azdata.Account,
+			subscriptions: azureResource.AzureResourceSubscription[],
+			ignoreErrors: boolean): Promise<azurecore.GetSqlServersResult> {
+			return azureResourceUtils.runResourceQuery(account, subscriptions, ignoreErrors, `where type == "${azureResource.AzureResourceType.sqlServer}"`);
+		},
+		getSqlVMServers(account: azdata.Account,
+			subscriptions: azureResource.AzureResourceSubscription[],
+			ignoreErrors: boolean): Promise<azurecore.GetSqlVMServersResult> {
+			return azureResourceUtils.runResourceQuery(account, subscriptions, ignoreErrors, `where type == "${azureResource.AzureResourceType.virtualMachines}" and properties.storageProfile.imageReference.publisher == "microsoftsqlserver"`);
+		},
+		getStorageAccounts(account: azdata.Account,
+			subscriptions: azureResource.AzureResourceSubscription[],
+			ignoreErrors: boolean): Promise<azurecore.GetStorageAccountResult> {
+			return azureResourceUtils.runResourceQuery(account, subscriptions, ignoreErrors, `where type == "${azureResource.AzureResourceType.storageAccount}"`);
+		},
+		getBlobContainers(account: azdata.Account,
+			subscription: azureResource.AzureResourceSubscription,
+			storageAccount: azureResource.AzureGraphResource,
+			ignoreErrors: boolean): Promise<azurecore.GetBlobContainersResult> {
+			return azureResourceUtils.getBlobContainers(account, subscription, storageAccount, ignoreErrors);
+		},
+		getFileShares(account: azdata.Account,
+			subscription: azureResource.AzureResourceSubscription,
+			storageAccount: azureResource.AzureGraphResource,
+			ignoreErrors: boolean): Promise<azurecore.GetFileSharesResult> {
+			return azureResourceUtils.getFileShares(account, subscription, storageAccount, ignoreErrors);
+		},
+		makeAzureRestRequest(account: azdata.Account,
+			subscription: azureResource.AzureResourceSubscription,
+			path: string,
+			requestType: azurecore.HttpRequestMethod,
+			requestBody: any,
+			ignoreErrors: boolean,
+			host: string = 'https://management.azure.com'): Promise<azurecore.AzureRestResponse> {
+			return azureResourceUtils.makeHttpRequest(account, subscription, path, requestType, requestBody, ignoreErrors, host);
 		},
 		getRegionDisplayName: utils.getRegionDisplayName,
 		runGraphQuery<T extends azureResource.AzureGraphResource>(account: azdata.Account,
@@ -224,14 +263,6 @@ function registerAzureServices(appContext: AppContext): void {
 }
 
 async function onDidChangeConfiguration(e: vscode.ConfigurationChangeEvent): Promise<void> {
-	if (e.affectsConfiguration('azure.enableArcFeatures')) {
-		const response = await vscode.window.showInformationMessage(loc.requiresReload, loc.reload);
-		if (response === loc.reload) {
-			await vscode.commands.executeCommand('workbench.action.reloadWindow');
-		}
-		return;
-	}
-
 	if (e.affectsConfiguration('azure.piiLogging')) {
 		updatePiiLoggingLevel();
 	}

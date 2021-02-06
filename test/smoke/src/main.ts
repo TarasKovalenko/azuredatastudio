@@ -65,7 +65,7 @@ const opts = minimist(args, {
 	}
 });
 
-const testRepoUrl = 'https://github.com/anthonydresser/azuredatastudio-smoke-test-repo.git';
+const testRepoUrl = 'https://github.com/kburtram/azuredatastudio-smoke-test-repo.git';
 const workspacePath = path.join(testDataPath, 'azuredatastudio-smoke-test-repo');
 const extensionsPath = path.join(testDataPath, 'extensions-dir');
 mkdirp.sync(extensionsPath);
@@ -73,6 +73,11 @@ mkdirp.sync(extensionsPath);
 const screenshotsPath = opts.screenshots ? path.resolve(opts.screenshots) : null;
 if (screenshotsPath) {
 	mkdirp.sync(screenshotsPath);
+}
+
+const logPath = opts.log ? path.resolve(opts.log) : null;
+if (logPath) {
+	mkdirp.sync(path.dirname(logPath));
 }
 
 function fail(errorMessage): void {

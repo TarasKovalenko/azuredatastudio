@@ -10,7 +10,7 @@ import { ControllerModel } from '../../models/controllerModel';
 import { ControllerTreeNode } from './controllerTreeNode';
 import { TreeNode } from './treeNode';
 
-const mementoToken = 'arcControllers';
+const mementoToken = 'arcDataControllers';
 
 /**
  * The TreeDataProvider for the Azure Arc view, which displays a list of registered
@@ -135,10 +135,14 @@ export class AzureArcTreeDataProvider implements vscode.TreeDataProvider<TreeNod
 			if (resourceNode) {
 				await resourceNode.openDashboard();
 			} else {
-				console.log(`Couldn't find resource node for ${name} (${resourceType})`);
+				const errMsg = `Couldn't find resource node for ${name} (${resourceType})`;
+				console.log(errMsg);
+				throw new Error(errMsg);
 			}
 		} else {
-			console.log('Couldn\'t find controller node for opening dashboard');
+			const errMsg = 'Couldn\'t find controller node for opening dashboard';
+			console.log(errMsg);
+			throw new Error(errMsg);
 		}
 	}
 }

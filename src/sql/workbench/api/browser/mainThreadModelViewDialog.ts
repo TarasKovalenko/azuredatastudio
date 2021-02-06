@@ -17,6 +17,8 @@ import { ModelViewInput, ModelViewInputModel, ModeViewSaveHandler } from 'sql/wo
 import * as vscode from 'vscode';
 import * as azdata from 'azdata';
 import { assign } from 'vs/base/common/objects';
+import { TelemetryView, TelemetryAction } from 'sql/platform/telemetry/common/telemetryKeys';
+import { IAdsTelemetryService } from 'sql/platform/telemetry/common/telemetry';
 
 @extHostNamedCustomer(SqlMainContext.MainThreadModelViewDialog)
 export class MainThreadModelViewDialog implements MainThreadModelViewDialogShape {
@@ -33,7 +35,8 @@ export class MainThreadModelViewDialog implements MainThreadModelViewDialogShape
 	constructor(
 		context: IExtHostContext,
 		@IInstantiationService private _instatiationService: IInstantiationService,
-		@IEditorService private _editorService: IEditorService
+		@IEditorService private _editorService: IEditorService,
+		@IAdsTelemetryService private _telemetryService: IAdsTelemetryService
 	) {
 		this._proxy = context.getProxy(SqlExtHostContext.ExtHostModelViewDialog);
 		this._dialogService = new CustomDialogService(_instatiationService);
@@ -43,7 +46,7 @@ export class MainThreadModelViewDialog implements MainThreadModelViewDialogShape
 		throw new Error('Method not implemented.');
 	}
 
-	public $openEditor(handle: number, modelViewId: string, title: string, options?: azdata.ModelViewEditorOptions, position?: vscode.ViewColumn): Thenable<void> {
+	public $openEditor(handle: number, modelViewId: string, title: string, name?: string, options?: azdata.ModelViewEditorOptions, position?: vscode.ViewColumn): Thenable<void> {
 		return new Promise<void>((resolve, reject) => {
 			let saveHandler: ModeViewSaveHandler = options && options.supportsSave ? (h) => this.handleSave(h) : undefined;
 			let model = new ModelViewInputModel(modelViewId, handle, saveHandler);
@@ -52,7 +55,9 @@ export class MainThreadModelViewDialog implements MainThreadModelViewDialogShape
 				preserveFocus: true,
 				pinned: true
 			};
-
+			this._telemetryService.createActionEvent(TelemetryView.Shell, TelemetryAction.ModelViewDashboardOpened)
+				.withAdditionalProperties({ name: name })
+				.send();
 			this._editorService.openEditor(input, editorOptions, position as any).then((editor) => {
 				this._editorInputModels.set(handle, model);
 				resolve();
@@ -146,7 +151,7 @@ export class MainThreadModelViewDialog implements MainThreadModelViewDialogShape
 	public $setWizardPageDetails(handle: number, details: IModelViewWizardPageDetails): Thenable<void> {
 		let page = this._wizardPages.get(handle);
 		if (!page) {
-			page = new WizardPage(details.title, details.content);
+			page = new WizardPage(details.title, details.content, details.pageName);
 			page.onValidityChanged(valid => this._proxy.$onPanelValidityChanged(handle, valid));
 			this._wizardPages.set(handle, page);
 			this._wizardPageHandles.set(page, handle);
@@ -156,6 +161,7 @@ export class MainThreadModelViewDialog implements MainThreadModelViewDialogShape
 		page.content = details.content;
 		page.enabled = details.enabled;
 		page.description = details.description;
+		page.pageName = details.pageName;
 		if (details.customButtons !== undefined) {
 			page.customButtons = details.customButtons.map(buttonHandle => this.getButton(buttonHandle));
 		}

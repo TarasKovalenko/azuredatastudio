@@ -45,7 +45,6 @@ import { Memento } from 'vs/workbench/common/memento';
 import { IEnvironmentService } from 'vs/platform/environment/common/environment';
 import { INotificationService } from 'vs/platform/notification/common/notification';
 import { entries } from 'sql/base/common/collections';
-import { find } from 'vs/base/common/arrays';
 import { values } from 'vs/base/common/collections';
 import { assign } from 'vs/base/common/objects';
 import { IAdsTelemetryService } from 'sql/platform/telemetry/common/telemetry';
@@ -252,7 +251,7 @@ export class ConnectionManagementService extends Disposable implements IConnecti
 	 * @param connectionProfile Connection Profile
 	 */
 	public async addSavedPassword(connectionProfile: interfaces.IConnectionProfile): Promise<interfaces.IConnectionProfile> {
-		await this.fillInOrClearAzureToken(connectionProfile);
+		await this.fillInOrClearToken(connectionProfile);
 		return this._connectionStore.addSavedPassword(connectionProfile).then(result => result.profile);
 	}
 
@@ -311,7 +310,7 @@ export class ConnectionManagementService extends Disposable implements IConnecti
 			}
 
 			// Fill in the Azure account token if needed and open the connection dialog if it fails
-			let tokenFillSuccess = await this.fillInOrClearAzureToken(newConnection);
+			let tokenFillSuccess = await this.fillInOrClearToken(newConnection);
 
 			// If the password is required and still not loaded show the dialog
 			if ((!foundPassword && this._connectionStore.isPasswordRequired(newConnection) && !newConnection.password) || !tokenFillSuccess) {
@@ -469,7 +468,7 @@ export class ConnectionManagementService extends Disposable implements IConnecti
 		if (callbacks.onConnectStart) {
 			callbacks.onConnectStart();
 		}
-		let tokenFillSuccess = await this.fillInOrClearAzureToken(connection);
+		let tokenFillSuccess = await this.fillInOrClearToken(connection);
 		if (!tokenFillSuccess) {
 			throw new Error(nls.localize('connection.noAzureAccount', "Failed to get Azure account token for connection"));
 		}
@@ -574,8 +573,12 @@ export class ConnectionManagementService extends Disposable implements IConnecti
 
 		let iconProvider = this._iconProviders.get(connectionManagementInfo.providerId);
 		if (iconProvider) {
-			let serverInfo: azdata.ServerInfo = this.getServerInfo(connectionProfile.id);
-			let profile: interfaces.IConnectionProfile = connectionProfile.toIConnectionProfile();
+			const serverInfo: azdata.ServerInfo | undefined = this.getServerInfo(connectionProfile.id);
+			if (!serverInfo) {
+				this._logService.warn(`Could not find ServerInfo for connection ${connectionProfile.id} when updating icon`);
+				return;
+			}
+			const profile: interfaces.IConnectionProfile = connectionProfile.toIConnectionProfile();
 			iconProvider.getConnectionIconId(profile, serverInfo).then(iconId => {
 				if (iconId && this._mementoObj && this._mementoContext) {
 					if (!this._mementoObj.CONNECTION_ICON_ID) {
@@ -795,26 +798,47 @@ export class ConnectionManagementService extends Disposable implements IConnecti
 			return AzureResource.Sql;
 		}
 
-		let result = find(ConnectionManagementService._azureResources, r => AzureResource[r] === provider.properties.azureResource);
+		let result = ConnectionManagementService._azureResources.find(r => AzureResource[r] === provider.properties.azureResource);
 		return result ? result : AzureResource.Sql;
 	}
 
 	/**
-	 * Fills in the Azure account token if it's needed for this connection and doesn't already have one
+	 * Fills in the account token if it's needed for this connection and doesn't already have one
 	 * and clears it if it isn't.
 	 * @param connection The connection to fill in or update
 	 */
-	private async fillInOrClearAzureToken(connection: interfaces.IConnectionProfile): Promise<boolean> {
-		if (connection.authenticationType !== Constants.azureMFA && connection.authenticationType !== Constants.azureMFAAndUser) {
+	private async fillInOrClearToken(connection: interfaces.IConnectionProfile): Promise<boolean> {
+		if (connection.authenticationType !== Constants.azureMFA
+			&& connection.authenticationType !== Constants.azureMFAAndUser
+			&& connection.authenticationType !== Constants.dstsAuth) {
 			connection.options['azureAccountToken'] = undefined;
 			return true;
 		}
+
 		let azureResource = this.getAzureResourceForConnection(connection);
 		const accounts = await this._accountManagementService.getAccounts();
+
+		if (connection.authenticationType === Constants.dstsAuth) {
+			let dstsAccounts = accounts.filter(a => a.key.providerId.startsWith('dstsAuth'));
+			if (dstsAccounts.length <= 0) {
+				connection.options['azureAccountToken'] = undefined;
+				return false;
+			}
+
+			dstsAccounts[0].key.providerArgs = {
+				serverName: connection.serverName,
+				databaseName: connection.databaseName
+			};
+
+			let tokenPromise = await this._accountManagementService.getAccountSecurityToken(dstsAccounts[0], undefined, undefined);
+			connection.options['azureAccountToken'] = tokenPromise.token;
+			return true;
+		}
+
 		const azureAccounts = accounts.filter(a => a.key.providerId.startsWith('azure'));
 		if (azureAccounts && azureAccounts.length > 0) {
 			let accountId = (connection.authenticationType === Constants.azureMFA || connection.authenticationType === Constants.azureMFAAndUser) ? connection.azureAccount : connection.userName;
-			let account = find(azureAccounts, account => account.key.accountId === accountId);
+			let account = azureAccounts.find(account => account.key.accountId === accountId);
 			if (account) {
 				this._logService.debug(`Getting security token for Azure account ${account.key.accountId}`);
 				if (account.isStale) {
@@ -1094,7 +1118,7 @@ export class ConnectionManagementService extends Disposable implements IConnecti
 		];
 
 		return this._quickInputService.pick(choices.map(x => x.key), { placeHolder: nls.localize('cancelConnectionConfirmation', "Are you sure you want to cancel this connection?"), ignoreFocusLost: true }).then((choice) => {
-			let confirm = find(choices, x => x.key === choice);
+			let confirm = choices.find(x => x.key === choice);
 			return confirm && confirm.value;
 		});
 	}
@@ -1350,10 +1374,10 @@ export class ConnectionManagementService extends Disposable implements IConnecti
 	}
 
 	public async getConnectionCredentials(profileId: string): Promise<{ [name: string]: string }> {
-		let profile = find(this.getActiveConnections(), connectionProfile => connectionProfile.id === profileId);
+		let profile = this.getActiveConnections().find(connectionProfile => connectionProfile.id === profileId);
 		if (!profile) {
 			// Couldn't find an active profile so try all profiles now - fetching the password if we found one
-			profile = find(this.getConnections(), connectionProfile => connectionProfile.id === profileId);
+			profile = this.getConnections().find(connectionProfile => connectionProfile.id === profileId);
 			if (!profile) {
 				return undefined;
 			}
@@ -1361,7 +1385,7 @@ export class ConnectionManagementService extends Disposable implements IConnecti
 		}
 
 		// Find the password option for the connection provider
-		let passwordOption = find(this._capabilitiesService.getCapabilities(profile.providerName).connection.connectionOptions,
+		let passwordOption = this._capabilitiesService.getCapabilities(profile.providerName).connection.connectionOptions.find(
 			option => option.specialValueType === ConnectionOptionSpecialType.password);
 		if (!passwordOption) {
 			return undefined;
@@ -1377,10 +1401,7 @@ export class ConnectionManagementService extends Disposable implements IConnecti
 		if (!profile) {
 			return undefined;
 		}
-
-		let serverInfo = profile.serverInfo;
-
-		return serverInfo;
+		return profile.serverInfo;
 	}
 
 	public getConnectionProfileById(profileId: string): interfaces.IConnectionProfile {
@@ -1449,7 +1470,7 @@ export class ConnectionManagementService extends Disposable implements IConnecti
 		const connections = this.getActiveConnections();
 
 		const connectionExists: (conn: ConnectionProfile) => boolean = (conn) => {
-			return find(connections, existingConnection => existingConnection.id === conn.id) !== undefined;
+			return connections.find(existingConnection => existingConnection.id === conn.id) !== undefined;
 		};
 
 		if (!activeConnectionsOnly) {

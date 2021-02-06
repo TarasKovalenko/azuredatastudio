@@ -14,6 +14,7 @@ import { ComponentBase } from 'sql/workbench/browser/modelComponents/componentBa
 import { localize } from 'vs/nls';
 import { IComponent, IComponentDescriptor, IModelStore } from 'sql/platform/dashboard/browser/interfaces';
 import { status } from 'vs/base/browser/ui/aria/aria';
+import { ILogService } from 'vs/platform/log/common/log';
 
 @Component({
 	selector: 'modelview-loadingComponent',
@@ -34,23 +35,23 @@ export default class LoadingComponent extends ComponentBase<azdata.LoadingCompon
 
 	constructor(
 		@Inject(forwardRef(() => ChangeDetectorRef)) changeRef: ChangeDetectorRef,
-		@Inject(forwardRef(() => ElementRef)) el: ElementRef) {
-		super(changeRef, el);
+		@Inject(forwardRef(() => ElementRef)) el: ElementRef,
+		@Inject(ILogService) logService: ILogService) {
+		super(changeRef, el, logService);
 		this._validations.push(() => {
 			if (!this._component) {
 				return true;
+			}
+			if (this.loading) {
+				return false;
 			}
 			return this.modelStore.getComponent(this._component.id).validate();
 		});
 	}
 
-	ngOnInit(): void {
-		this.baseInit();
-
-	}
-
 	ngAfterViewInit(): void {
 		this.setLayout();
+		this.baseInit();
 	}
 
 	ngOnDestroy(): void {
@@ -92,8 +93,13 @@ export default class LoadingComponent extends ComponentBase<azdata.LoadingCompon
 		return this.getPropertyOrDefault<string>((props) => props.loadingCompletedText, localize('loadingCompletedMessage', "Loading completed"));
 	}
 
-	public addToContainer(componentDescriptor: IComponentDescriptor): void {
-		this._component = componentDescriptor;
+	public addToContainer(items: { componentDescriptor: IComponentDescriptor }[]): void {
+		this._component = items[0].componentDescriptor;
+		this.layout();
+	}
+
+	public removeFromContainer(_componentDescriptor: IComponentDescriptor): void {
+		this._component = undefined;
 		this.layout();
 	}
 

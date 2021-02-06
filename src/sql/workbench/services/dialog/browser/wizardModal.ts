@@ -27,6 +27,7 @@ import { onUnexpectedError } from 'vs/base/common/errors';
 import { attachModalDialogStyler } from 'sql/workbench/common/styler';
 import { ILayoutService } from 'vs/platform/layout/browser/layoutService';
 import { status } from 'vs/base/browser/ui/aria/aria';
+import { TelemetryView, TelemetryAction } from 'sql/platform/telemetry/common/telemetryKeys';
 
 export class WizardModal extends Modal {
 	private _dialogPanes = new Map<WizardPage, DialogPane>();
@@ -49,14 +50,14 @@ export class WizardModal extends Modal {
 		options: IModalOptions,
 		@ILayoutService layoutService: ILayoutService,
 		@IThemeService themeService: IThemeService,
-		@IAdsTelemetryService telemetryService: IAdsTelemetryService,
+		@IAdsTelemetryService private _telemetryEventService: IAdsTelemetryService,
 		@IContextKeyService contextKeyService: IContextKeyService,
 		@IInstantiationService private _instantiationService: IInstantiationService,
 		@IClipboardService clipboardService: IClipboardService,
 		@ILogService logService: ILogService,
 		@ITextResourcePropertiesService textResourcePropertiesService: ITextResourcePropertiesService
 	) {
-		super(_wizard.title, _wizard.name, telemetryService, layoutService, clipboardService, themeService, logService, textResourcePropertiesService, contextKeyService, options);
+		super(_wizard.title, _wizard.name, _telemetryEventService, layoutService, clipboardService, themeService, logService, textResourcePropertiesService, contextKeyService, options);
 		this._useDefaultMessageBoxLocation = false;
 	}
 
@@ -138,13 +139,13 @@ export class WizardModal extends Modal {
 		this._wizard.onPageAdded(page => {
 			this.registerPage(page);
 			this.updatePageNumbers();
-			this.showPage(this._wizard.currentPage, false).catch(err => onUnexpectedError(err));
+			this.showPage(this._wizard.currentPage, false, false, false).catch(err => onUnexpectedError(err));
 		});
 		this._wizard.onPageRemoved(page => {
 			let dialogPane = this._dialogPanes.get(page);
 			this._dialogPanes.delete(page);
 			this.updatePageNumbers();
-			this.showPage(this._wizard.currentPage, false).catch(err => onUnexpectedError(err));
+			this.showPage(this._wizard.currentPage, false, false, false).catch(err => onUnexpectedError(err));
 			dialogPane.dispose();
 		});
 		this.updatePageNumbers();
@@ -173,8 +174,9 @@ export class WizardModal extends Modal {
 		page.onUpdate(() => this.setButtonsForPage(this._wizard.currentPage));
 	}
 
-	public async showPage(index: number, validate: boolean = true, focus: boolean = false): Promise<void> {
+	public async showPage(index: number, validate: boolean = true, focus: boolean = false, readHeader: boolean = true): Promise<void> {
 		let pageToShow = this._wizard.pages[index];
+		const prevPageIndex = this._wizard.currentPage;
 		if (!pageToShow) {
 			this.done(validate).catch(err => onUnexpectedError(err));
 			return;
@@ -194,7 +196,7 @@ export class WizardModal extends Modal {
 			}
 		});
 
-		if (dialogPaneToShow) {
+		if (dialogPaneToShow && readHeader) {
 			status(`${dialogPaneToShow.pageNumberDisplayText} ${dialogPaneToShow.title}`);
 		}
 		this.setButtonsForPage(index);
@@ -209,6 +211,15 @@ export class WizardModal extends Modal {
 				this._doneButton.enabled = this._wizard.doneButton.enabled && pageToShow.valid;
 			}
 		});
+
+		if (index !== prevPageIndex) {
+			this._telemetryEventService.createActionEvent(TelemetryView.Shell, TelemetryAction.WizardPagesNavigation)
+				.withAdditionalProperties({
+					wizardName: this._wizard.name,
+					pageNavigationFrom: this._wizard.pages[prevPageIndex].pageName ?? prevPageIndex,
+					pageNavigationTo: this._wizard.pages[index].pageName ?? index
+				}).send();
+		}
 	}
 
 	private setButtonsForPage(index: number) {
@@ -268,9 +279,10 @@ export class WizardModal extends Modal {
 	}
 
 	public cancel(): void {
+		const currentPage = this._wizard.pages[this._wizard.currentPage];
 		this._onCancel.fire();
 		this.dispose();
-		this.hide('cancel');
+		this.hide('cancel', currentPage.pageName ?? this._wizard.currentPage.toString());
 	}
 
 	private async validateNavigation(newPage: number): Promise<boolean> {

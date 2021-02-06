@@ -4,8 +4,9 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as azdata from 'azdata';
+import { IOptionsSourceProvider } from 'resource-deployment';
 import * as vscode from 'vscode';
-import { OptionsSourceType } from './helpers/optionSources';
+import { ValidationInfo } from './ui/validation/validations';
 
 export const NoteBookEnvironmentVariablePrefix = 'AZDATA_NB_VAR_';
 
@@ -14,18 +15,46 @@ export interface ResourceType {
 	displayName: string;
 	description: string;
 	platforms: string[] | '*';
-	icon: { light: string; dark: string };
+	icon: { light: string; dark: string } | string;
 	options: ResourceTypeOption[];
 	providers: DeploymentProvider[];
-	agreement?: AgreementInfo;
+	agreements?: AgreementInfo[];
 	displayIndex?: number;
-	okButtonText?: string;
+	okButtonText?: OkButtonTextValue[];
+	helpTexts: HelpText[];
+	getOkButtonText(selectedOptions: { option: string, value: string }[]): string | undefined;
 	getProvider(selectedOptions: { option: string, value: string }[]): DeploymentProvider | undefined;
+	getAgreementInfo(selectedOptions: { option: string, value: string }[]): AgreementInfo | undefined;
+	getHelpText(selectedOption: { option: string, value: string }[]): HelpText | undefined;
+	tags?: string[];
+}
+
+export interface ResourceSubType {
+	/**
+	 * The name of the Resource Type this subtype is extending
+	 */
+	resourceName: string;
+	/**
+	 * The option name should have a matching name in ResourceType.options
+	 */
+	options: ResourceTypeOption[];
+	tags?: string[];
+	provider: DeploymentProvider;
+	okButtonText?: OkButtonTextValue;
+	agreement?: AgreementInfo;
+	helpText?: HelpText;
+}
+
+export interface HelpText {
+	template: string;
+	links?: azdata.LinkArea[];
+	when?: string;
 }
 
 export interface AgreementInfo {
 	template: string;
-	links: azdata.LinkArea[];
+	links?: azdata.LinkArea[];
+	when?: string;
 }
 
 export interface ResourceTypeOption {
@@ -37,6 +66,11 @@ export interface ResourceTypeOption {
 export interface ResourceTypeOptionValue {
 	name: string;
 	displayName: string;
+}
+
+export interface OkButtonTextValue {
+	value: string;
+	when: string;
 }
 
 export interface DialogDeploymentProvider extends DeploymentProviderBase {
@@ -71,6 +105,10 @@ export interface AzureSQLVMDeploymentProvider extends DeploymentProviderBase {
 	azureSQLVMWizard: AzureSQLVMWizardInfo;
 }
 
+export interface AzureSQLDBDeploymentProvider extends DeploymentProviderBase {
+	azureSQLDBWizard: AzureSQLDBWizardInfo;
+}
+
 export function instanceOfDialogDeploymentProvider(obj: any): obj is DialogDeploymentProvider {
 	return obj && 'dialog' in obj;
 }
@@ -103,32 +141,68 @@ export function instanceOfAzureSQLVMDeploymentProvider(obj: any): obj is AzureSQ
 	return obj && 'azureSQLVMWizard' in obj;
 }
 
+export function instanceOfAzureSQLDBDeploymentProvider(obj: any): obj is AzureSQLDBDeploymentProvider {
+	return obj && 'azureSQLDBWizard' in obj;
+}
+
 export interface DeploymentProviderBase {
 	requiredTools: ToolRequirementInfo[];
 	when: string;
 }
 
-export type DeploymentProvider = DialogDeploymentProvider | BdcWizardDeploymentProvider | NotebookWizardDeploymentProvider | NotebookDeploymentProvider | WebPageDeploymentProvider | DownloadDeploymentProvider | CommandDeploymentProvider | AzureSQLVMDeploymentProvider;
+export type DeploymentProvider = DialogDeploymentProvider | BdcWizardDeploymentProvider | NotebookWizardDeploymentProvider | NotebookDeploymentProvider | WebPageDeploymentProvider | DownloadDeploymentProvider | CommandDeploymentProvider | AzureSQLVMDeploymentProvider | AzureSQLDBDeploymentProvider;
 
 export interface BdcWizardInfo {
 	notebook: string | NotebookPathInfo;
 	type: BdcDeploymentType;
 }
+/**
+ * An object that configures Script and Done buttons of the wizard.
+ */
+export interface WizardAction {
+	label?: string
+}
 
+/**
+ * 	This object defines the shape, form and behavior of a Notebook Wizard.
+ */
 export interface NotebookWizardInfo extends WizardInfoBase {
+	/**
+	 *	path to the template python notebook that is modified with variables collected in the wizard. A copy of this modified notebook is executed at the end of the wizard either from commonadline of from notebook editor in ADS.
+	*/
 	notebook: string | NotebookPathInfo;
-	runNotebook?: boolean;
+	/**
+	 * 	0 based position number where the variables values are inserted into the notebook as python statements.
+	 */
 	codeCellInsertionPosition?: number;
+	/**
+	 * 	This array defines the json for the pages of this wizard.
+	 */
 	pages: NotebookWizardPageInfo[]
 }
 
 export interface WizardInfoBase extends FieldInfoBase {
-	taskName?: string;
 	type?: DeploymentType;
-	actionText?: string;
+	/**
+	 * 	done button attributes.
+	 */
+	doneAction: WizardAction;
+	/**
+	 * script button attributes.
+	 */
+	scriptAction?: WizardAction;
+	/**
+	 * 	title displayed on every page of the wizard
+	 */
 	title: string;
 	name?: string;
+	/**
+	 * 	This array defines the json for the pages of this wizard.
+	 */
 	pages: PageInfoBase[];
+	/**
+	 * 	if true an auto generated summary page is inserted at the end of the wizard
+	 */
 	isSummaryPageAutoGenerated?: boolean
 }
 
@@ -149,6 +223,10 @@ export interface AzureSQLVMWizardInfo {
 	notebook: string | NotebookPathInfo;
 }
 
+export interface AzureSQLDBWizardInfo {
+	notebook: string | NotebookPathInfo;
+}
+
 export type DialogInfo = NotebookBasedDialogInfo | CommandBasedDialogInfo;
 
 export function instanceOfNotebookBasedDialogInfo(obj: any): obj is NotebookBasedDialogInfo {
@@ -157,6 +235,10 @@ export function instanceOfNotebookBasedDialogInfo(obj: any): obj is NotebookBase
 
 export function instanceOfCommandBasedDialogInfo(obj: any): obj is CommandBasedDialogInfo {
 	return obj && 'command' in obj;
+}
+
+export function instanceOfDynamicEnablementInfo(obj: any): obj is DynamicEnablementInfo {
+	return (<DynamicEnablementInfo>obj)?.target !== undefined && (<DynamicEnablementInfo>obj)?.value !== undefined;
 }
 
 export interface DialogInfoBase {
@@ -187,11 +269,11 @@ export type ComponentCSSStyles = {
 };
 
 export interface IOptionsSource {
-	readonly type: OptionsSourceType,
-	readonly variableNames: { [index: string]: string; },
-	getOptions(): Promise<string[] | azdata.CategoryValue[]>,
-	getVariableValue(variableName: string, input: string): Promise<string>;
-	getIsPassword(variableName: string): boolean;
+	provider?: IOptionsSourceProvider
+	loadingText?: string,
+	loadingCompletedText?: string,
+	readonly variableNames?: { [index: string]: string; };
+	readonly providerId: string;
 }
 
 
@@ -200,6 +282,16 @@ export interface OptionsInfo {
 	source?: IOptionsSource,
 	defaultValue: string,
 	optionsType?: OptionsType
+}
+
+export interface DynamicEnablementInfo {
+	target: string,
+	value: string
+}
+
+export interface ValueProviderInfo {
+	providerId: string,
+	triggerField: string
 }
 
 export interface FieldInfoBase {
@@ -235,9 +327,6 @@ export interface FieldInfo extends SubFieldInfo, FieldInfoBase {
 	defaultValue?: string;
 	confirmationRequired?: boolean;
 	confirmationLabel?: string;
-	textValidationRequired?: boolean;
-	textValidationRegex?: string;
-	textValidationDescription?: string;
 	min?: number;
 	max?: number;
 	required?: boolean;
@@ -249,17 +338,16 @@ export interface FieldInfo extends SubFieldInfo, FieldInfoBase {
 	fontWeight?: FontWeight;
 	links?: azdata.LinkArea[];
 	editable?: boolean; // for editable drop-down,
-	enabled?: boolean;
+	enabled?: boolean | DynamicEnablementInfo;
 	isEvaluated?: boolean;
-	valueLookup?: string; // for fetching dropdown options
-	validationLookup?: string // for fetching text field validations
+	validations?: ValidationInfo[];
+	valueProvider?: ValueProviderInfo;
 }
 
 export interface KubeClusterContextFieldInfo extends FieldInfo {
 	configFileVariableName?: string;
 }
 export interface AzureAccountFieldInfo extends AzureLocationsFieldInfo {
-	displaySubscriptionVariableName?: string;
 	subscriptionVariableName?: string;
 	resourceGroupVariableName?: string;
 	allowNewResourceGroup?: boolean;
@@ -269,7 +357,6 @@ export interface AzureAccountFieldInfo extends AzureLocationsFieldInfo {
 
 export interface AzureLocationsFieldInfo extends FieldInfo {
 	locationVariableName?: string;
-	displayLocationVariableName?: string;
 	locations?: string[]
 }
 
@@ -401,11 +488,7 @@ export const enum BdcDeploymentType {
 	ExistingOpenShift = 'existing-openshift'
 }
 
-export const enum ArcDeploymentType {
-	NewControlPlane = 'new-control-plane'
-}
-
-export type DeploymentType = ArcDeploymentType | BdcDeploymentType;
+export type DeploymentType = BdcDeploymentType;
 
 export interface Command {
 	command: string;

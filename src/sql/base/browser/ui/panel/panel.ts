@@ -14,7 +14,6 @@ import { KeyCode } from 'vs/base/common/keyCodes';
 import { Disposable, DisposableStore } from 'vs/base/common/lifecycle';
 import { Color } from 'vs/base/common/color';
 import { isUndefinedOrNull } from 'vs/base/common/types';
-import { firstIndex } from 'vs/base/common/arrays';
 
 export interface ITabbedPanelStyles {
 	titleActiveForeground?: Color;
@@ -88,7 +87,6 @@ export class TabbedPanel extends Disposable {
 		this._styleElement = DOM.createStyleSheet(this.parent);
 		container.appendChild(this.parent);
 		this.header = DOM.$('.composite.title');
-		this.header.setAttribute('tabindex', '0');
 		this.tabList = DOM.$('.tabList');
 		this.tabList.setAttribute('role', 'tablist');
 		this.tabList.style.height = this.headersize + 'px';
@@ -105,7 +103,10 @@ export class TabbedPanel extends Disposable {
 		this.body = DOM.$('.tabBody');
 		this.body.setAttribute('role', 'tabpanel');
 		this.parent.appendChild(this.body);
-		this._register(DOM.addDisposableListener(this.header, DOM.EventType.FOCUS, e => this.focusCurrentTab()));
+	}
+
+	public get element(): HTMLElement {
+		return this.parent;
 	}
 
 	public dispose() {
@@ -170,17 +171,17 @@ export class TabbedPanel extends Disposable {
 
 		tab.disposables.add(DOM.addDisposableListener(tabHeaderElement, DOM.EventType.KEY_DOWN, (e: KeyboardEvent) => {
 			let event = new StandardKeyboardEvent(e);
-			if (event.equals(KeyCode.Enter)) {
+			if (event.equals(KeyCode.Enter) || event.equals(KeyCode.Space)) {
 				this.showTab(tab.tab.identifier);
 				invokeTabSelectedHandler();
 				e.stopImmediatePropagation();
 			}
 			if (event.equals(KeyCode.RightArrow)) {
-				let currentIndex = firstIndex(this._tabOrder, x => x === tab.tab.identifier);
+				let currentIndex = this._tabOrder.findIndex(x => x === tab.tab.identifier);
 				this.focusNextTab(currentIndex + 1);
 			}
 			if (event.equals(KeyCode.LeftArrow)) {
-				let currentIndex = firstIndex(this._tabOrder, x => x === tab.tab.identifier);
+				let currentIndex = this._tabOrder.findIndex(x => x === tab.tab.identifier);
 				this.focusNextTab(currentIndex - 1);
 			}
 			if (event.equals(KeyCode.Tab)) {
@@ -214,9 +215,10 @@ export class TabbedPanel extends Disposable {
 		if (this._shownTabId) {
 			const shownTab = this._tabMap.get(this._shownTabId);
 			if (shownTab) {
-				DOM.removeClass(shownTab.label, 'active');
-				DOM.removeClass(shownTab.header, 'active');
+				shownTab.label.classList.remove('active');
+				shownTab.header.classList.remove('active');
 				shownTab.header.setAttribute('aria-selected', 'false');
+				shownTab.header.tabIndex = -1;
 				if (shownTab.body) {
 					shownTab.body.remove();
 					if (shownTab.tab.view.onHide) {
@@ -229,7 +231,7 @@ export class TabbedPanel extends Disposable {
 		this._shownTabId = id;
 		this.tabHistory.push(id);
 		const tab = this._tabMap.get(this._shownTabId)!; // @anthonydresser we know this can't be undefined since we check further up if the map contains the id
-
+		tab.header.tabIndex = 0;
 		if (tab.destroyTabBody && tab.body) {
 			tab.body.remove();
 			tab.body = undefined;
@@ -243,15 +245,16 @@ export class TabbedPanel extends Disposable {
 		}
 		this.body.appendChild(tab.body);
 		this.body.setAttribute('aria-labelledby', tab.tab.identifier);
-		DOM.addClass(tab.label, 'active');
-		DOM.addClass(tab.header, 'active');
+		tab.label.classList.add('active');
+		tab.header.classList.add('active');
 		tab.header.setAttribute('aria-selected', 'true');
 		this._onTabChange.fire(id);
 		if (tab.tab.view.onShow) {
 			tab.tab.view.onShow();
 		}
 		if (this._currentDimensions) {
-			this._layoutCurrentTab(new DOM.Dimension(this._currentDimensions.width, this._currentDimensions.height - this.headersize));
+			const tabHeight = this._currentDimensions.height - (this._headerVisible ? this.headersize : 0);
+			this._layoutCurrentTab(new DOM.Dimension(this._currentDimensions.width, tabHeight));
 		}
 	}
 
@@ -271,7 +274,7 @@ export class TabbedPanel extends Disposable {
 		}
 		actualTab.disposables.dispose();
 		this._tabMap.delete(tab);
-		let index = firstIndex(this._tabOrder, t => t === tab);
+		let index = this._tabOrder.findIndex(t => t === tab);
 		this._tabOrder.splice(index, 1);
 		if (this._shownTabId === tab) {
 			this._shownTabId = undefined;
@@ -307,7 +310,7 @@ export class TabbedPanel extends Disposable {
 		}
 	}
 
-	private focusCurrentTab(): void {
+	public focusCurrentTab(): void {
 		if (this._shownTabId) {
 			const tab = this._tabMap.get(this._shownTabId);
 			if (tab) {
@@ -319,6 +322,13 @@ export class TabbedPanel extends Disposable {
 	public style(styles: ITabbedPanelStyles): void {
 		const content: string[] = [];
 
+		if (styles.border) {
+			content.push(`
+			.tabbedPanel {
+				border-color: ${styles.border};
+			}`);
+		}
+
 		if (styles.titleActiveForeground && styles.titleActiveBorder) {
 			content.push(`
 			.tabbedPanel > .title .tabList .tab:hover .tabLabel,
@@ -326,10 +336,6 @@ export class TabbedPanel extends Disposable {
 				color: ${styles.titleActiveForeground};
 				border-bottom-color: ${styles.titleActiveBorder};
 				border-bottom-width: 2px;
-			}
-
-			.tabbedPanel > .title .tabList .tab-header.active {
-				outline: none;
 			}`);
 		}
 

@@ -13,11 +13,12 @@ import * as azdata from 'azdata';
 import { ITitledComponent } from 'sql/workbench/browser/modelComponents/interfaces';
 import { ComponentWithIconBase } from 'sql/workbench/browser/modelComponents/componentWithIconBase';
 import { IComponent, IComponentDescriptor, IModelStore } from 'sql/platform/dashboard/browser/interfaces';
+import { ILogService } from 'vs/platform/log/common/log';
 
 @Component({
 	selector: 'modelview-image',
 	template: `
-		<div #imageContainer [title]="title" [style.width]="getWidth()" [style.height]="getHeight()" [style.background-size]="getImageSize()">`
+		<div #imageContainer [ngStyle]="CSSStyles" [title]="title">`
 })
 export default class ImageComponent extends ComponentWithIconBase<azdata.ImageComponentProperties> implements ITitledComponent, IComponent, OnDestroy, AfterViewInit {
 	@Input() descriptor: IComponentDescriptor;
@@ -26,15 +27,13 @@ export default class ImageComponent extends ComponentWithIconBase<azdata.ImageCo
 
 	constructor(
 		@Inject(forwardRef(() => ChangeDetectorRef)) changeRef: ChangeDetectorRef,
-		@Inject(forwardRef(() => ElementRef)) el: ElementRef) {
-		super(changeRef, el);
-	}
-
-	ngOnInit(): void {
-		this.baseInit();
+		@Inject(forwardRef(() => ElementRef)) el: ElementRef,
+		@Inject(ILogService) logService: ILogService) {
+		super(changeRef, el, logService);
 	}
 
 	ngAfterViewInit(): void {
+		this.baseInit();
 	}
 
 	ngOnDestroy(): void {
@@ -69,5 +68,13 @@ export default class ImageComponent extends ComponentWithIconBase<azdata.ImageCo
 	 */
 	public getImageSize(): string {
 		return `${this.getIconWidth()} ${this.getIconHeight()}`;
+	}
+
+	public get CSSStyles(): azdata.CssStyles {
+		return this.mergeCss(super.CSSStyles, {
+			'background-size': this.getImageSize(),
+			'width': this.getWidth(),
+			'height': this.getHeight()
+		});
 	}
 }

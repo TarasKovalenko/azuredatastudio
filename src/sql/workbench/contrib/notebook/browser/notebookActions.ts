@@ -24,7 +24,6 @@ import { IFindNotebookController } from 'sql/workbench/contrib/notebook/browser/
 import { INotebookModel } from 'sql/workbench/services/notebook/browser/models/modelInterfaces';
 import { IObjectExplorerService } from 'sql/workbench/services/objectExplorer/browser/objectExplorerService';
 import { TreeUpdateUtils } from 'sql/workbench/services/objectExplorer/browser/treeUpdateUtils';
-import { find, firstIndex } from 'vs/base/common/arrays';
 import { INotebookService } from 'sql/workbench/services/notebook/browser/notebookService';
 import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
 import { CellContext } from 'sql/workbench/contrib/notebook/browser/cellViews/codeActions';
@@ -276,12 +275,13 @@ export class CollapseCellsAction extends ToggleableAction {
 const showAllKernelsConfigName = 'notebook.showAllKernels';
 const workbenchPreviewConfigName = 'workbench.enablePreviewFeatures';
 export const noKernelName = localize('noKernel', "No Kernel");
+const kernelDropdownElementId = 'kernel-dropdown';
 
 export class KernelsDropdown extends SelectBox {
 	private model: NotebookModel;
 	private _showAllKernels: boolean = false;
 	constructor(container: HTMLElement, contextViewProvider: IContextViewProvider, modelReady: Promise<INotebookModel>, @IConfigurationService private _configurationService: IConfigurationService) {
-		super([msgLoading], msgLoading, contextViewProvider, container, { labelText: kernelLabel, labelOnTop: false, ariaLabel: kernelLabel } as ISelectBoxOptionsWithLabel);
+		super([msgLoading], msgLoading, contextViewProvider, container, { labelText: kernelLabel, labelOnTop: false, ariaLabel: kernelLabel, id: kernelDropdownElementId } as ISelectBoxOptionsWithLabel);
 
 		if (modelReady) {
 			modelReady
@@ -323,10 +323,10 @@ export class KernelsDropdown extends SelectBox {
 			if (kernels) {
 				let index;
 				if (standardKernel) {
-					index = firstIndex(kernels, kernel => kernel === standardKernel.displayName);
+					index = kernels.findIndex(kernel => kernel === standardKernel.displayName);
 				} else {
 					let kernelSpec = this.model.specs.kernels.find(k => k.name === kernel.name);
-					index = firstIndex(kernels, k => k === kernelSpec?.display_name);
+					index = kernels.findIndex(k => k === kernelSpec?.display_name);
 				}
 				if (nbKernelAlias) {
 					index = kernels.indexOf(nbKernelAlias);
@@ -338,7 +338,7 @@ export class KernelsDropdown extends SelectBox {
 				}
 				this.setOptions(kernels, index);
 			}
-		} else if (this.model.clientSession.isInErrorState) {
+		} else if (this.model.clientSession?.isInErrorState) {
 			kernels.unshift(noKernelName);
 			this.setOptions(kernels, 0);
 		}
@@ -354,6 +354,9 @@ export class KernelsDropdown extends SelectBox {
 	}
 }
 
+const attachToDropdownElementId = 'attach-to-dropdown';
+const saveConnectionNameConfigName = 'notebook.saveConnectionName';
+
 export class AttachToDropdown extends SelectBox {
 	private model: NotebookModel;
 
@@ -363,8 +366,9 @@ export class AttachToDropdown extends SelectBox {
 		@IConnectionDialogService private _connectionDialogService: IConnectionDialogService,
 		@INotificationService private _notificationService: INotificationService,
 		@ICapabilitiesService private _capabilitiesService: ICapabilitiesService,
+		@IConfigurationService private _configurationService: IConfigurationService
 	) {
-		super([msgLoadingContexts], msgLoadingContexts, contextViewProvider, container, { labelText: attachToLabel, labelOnTop: false, ariaLabel: attachToLabel } as ISelectBoxOptionsWithLabel);
+		super([msgLoadingContexts], msgLoadingContexts, contextViewProvider, container, { labelText: attachToLabel, labelOnTop: false, ariaLabel: attachToLabel, id: attachToDropdownElementId } as ISelectBoxOptionsWithLabel);
 		if (modelReady) {
 			modelReady
 				.then(model => {
@@ -398,7 +402,7 @@ export class AttachToDropdown extends SelectBox {
 		let kernelDisplayName: string = this.getKernelDisplayName();
 		if (kernelDisplayName) {
 			this.loadAttachToDropdown(this.model, kernelDisplayName, showSelectConnection);
-		} else if (this.model.clientSession.isInErrorState) {
+		} else if (this.model.clientSession?.isInErrorState) {
 			this.setOptions([localize('noContextAvailable', "None")], 0);
 		}
 	}
@@ -407,7 +411,7 @@ export class AttachToDropdown extends SelectBox {
 		let kernelDisplayName: string;
 		if (this.model.clientSession && this.model.clientSession.kernel && this.model.clientSession.kernel.name) {
 			let currentKernelName = this.model.clientSession.kernel.name.toLowerCase();
-			let currentKernelSpec = find(this.model.specs.kernels, kernel => kernel.name && kernel.name.toLowerCase() === currentKernelName);
+			let currentKernelSpec = this.model.specs.kernels.find(kernel => kernel.name && kernel.name.toLowerCase() === currentKernelName);
 			if (currentKernelSpec) {
 				//KernelDisplayName should be Kusto when connecting to Kusto connection
 				if ((this.model.context?.serverCapabilities.notebookKernelAlias && this.model.currentKernelAlias === this.model.context?.serverCapabilities.notebookKernelAlias) || (this.model.kernelAliases.includes(this.model.selectedKernelDisplayName) && this.model.selectedKernelDisplayName)) {
@@ -426,8 +430,15 @@ export class AttachToDropdown extends SelectBox {
 		if ((connProviderIds && connProviderIds.length === 0) || currentKernel === noKernel) {
 			this.setOptions([msgLocalHost]);
 		} else {
-			let connections: string[] = model.context && model.context.title && (connProviderIds.includes(this.model.context.providerName)) ? [model.context.title] : [msgSelectConnection];
-			if (!find(connections, x => x === msgChangeConnection)) {
+			let connections: string[] = [];
+			if (model.context && model.context.title && (connProviderIds.includes(this.model.context.providerName))) {
+				connections.push(model.context.title);
+			} else if (this._configurationService.getValue(saveConnectionNameConfigName) && model.savedConnectionName) {
+				connections.push(model.savedConnectionName);
+			} else {
+				connections.push(msgSelectConnection);
+			}
+			if (!connections.find(x => x === msgChangeConnection)) {
 				connections.push(msgChangeConnection);
 			}
 			this.setOptions(connections, 0);
@@ -469,7 +480,7 @@ export class AttachToDropdown extends SelectBox {
 			}
 			let connection = await this._connectionDialogService.openDialogAndWait(this._connectionManagementService,
 				{
-					connectionType: ConnectionType.temporary,
+					connectionType: ConnectionType.editor,
 					providers: providers
 				},
 				useProfile ? this.model.connectionProfile : undefined);
@@ -497,7 +508,7 @@ export class AttachToDropdown extends SelectBox {
 			//To ignore n/a after we have at least one valid connection
 			attachToConnections = attachToConnections.filter(val => val !== msgSelectConnection);
 
-			let index = firstIndex(attachToConnections, connection => connection === connectedServer);
+			let index = attachToConnections.findIndex(connection => connection === connectedServer);
 			this.setOptions([]);
 			this.setOptions(attachToConnections);
 			if (!index || index < 0 || index >= attachToConnections.length) {

@@ -12,7 +12,6 @@ import { CellActionBase, CellContext } from 'sql/workbench/contrib/notebook/brow
 import { CellModel } from 'sql/workbench/services/notebook/browser/models/cell';
 import { CellTypes, CellType } from 'sql/workbench/services/notebook/common/contracts';
 import { ToggleableAction } from 'sql/workbench/contrib/notebook/browser/notebookActions';
-import { firstIndex } from 'vs/base/common/arrays';
 import { getErrorMessage } from 'vs/base/common/errors';
 import Severity from 'vs/base/common/severity';
 import { INotebookService } from 'sql/workbench/services/notebook/browser/notebookService';
@@ -146,6 +145,9 @@ export class CellToggleMoreActions {
 			instantiationService.createInstance(CollapseCellAction, 'collapseCell', localize('collapseCell', "Collapse Cell"), true),
 			instantiationService.createInstance(CollapseCellAction, 'expandCell', localize('expandCell', "Expand Cell"), false),
 			new Separator(),
+			instantiationService.createInstance(ParametersCellAction, 'makeParameterCell', localize('makeParameterCell', "Make parameter cell"), true),
+			instantiationService.createInstance(ParametersCellAction, 'removeParameterCell', localize('RemoveParameterCell', "Remove parameter cell"), false),
+			new Separator(),
 			instantiationService.createInstance(ClearCellOutputAction, 'clear', localize('clear', "Clear Result")),
 		);
 	}
@@ -218,7 +220,7 @@ export class AddCellFromContextAction extends CellActionBase {
 	doRun(context: CellContext): Promise<void> {
 		try {
 			let model = context.model;
-			let index = firstIndex(model.cells, (cell) => cell.id === context.cell.id);
+			let index = model.cells.findIndex((cell) => cell.id === context.cell.id);
 			if (index !== undefined && this.isAfter) {
 				index += 1;
 			}
@@ -363,5 +365,42 @@ export class ToggleMoreActions extends Action {
 			getActionsContext: () => this._context
 		});
 		return Promise.resolve(true);
+	}
+}
+
+export class ParametersCellAction extends CellActionBase {
+	constructor(id: string,
+		label: string,
+		private parametersCell: boolean,
+		@INotificationService notificationService: INotificationService
+	) {
+		super(id, label, undefined, notificationService);
+	}
+
+	public canRun(context: CellContext): boolean {
+		return context.cell?.cellType === CellTypes.Code;
+	}
+
+	async doRun(context: CellContext): Promise<void> {
+		try {
+			let cell = context.cell || context.model.activeCell;
+			if (cell) {
+				if (this.parametersCell) {
+					if (!cell.isParameter) {
+						cell.isParameter = true;
+					}
+				} else {
+					if (cell.isParameter) {
+						cell.isParameter = false;
+					}
+				}
+			}
+		} catch (error) {
+			let message = getErrorMessage(error);
+			this.notificationService.notify({
+				severity: Severity.Error,
+				message: message
+			});
+		}
 	}
 }

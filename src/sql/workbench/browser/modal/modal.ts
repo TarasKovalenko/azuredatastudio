@@ -23,7 +23,6 @@ import { ILogService } from 'vs/platform/log/common/log';
 import { ITextResourcePropertiesService } from 'vs/editor/common/services/textResourceConfigurationService';
 import { URI } from 'vs/base/common/uri';
 import { Schemas } from 'vs/base/common/network';
-import { find, firstIndex } from 'vs/base/common/arrays';
 import { IThemable } from 'vs/base/common/styler';
 import { IAdsTelemetryService } from 'sql/platform/telemetry/common/telemetry';
 import { ILayoutService } from 'vs/platform/layout/browser/layoutService';
@@ -298,7 +297,7 @@ export abstract class Modal extends Disposable implements IThemable {
 
 	private updateExpandMessageState() {
 		this._messageSummary!.style.cursor = this.shouldShowExpandMessageButton ? 'pointer' : 'default';
-		DOM.removeClass(this._messageSummary!, MESSAGE_EXPANDED_MODE_CLASS);
+		this._messageSummary!.classList.remove(MESSAGE_EXPANDED_MODE_CLASS);
 		if (this.shouldShowExpandMessageButton) {
 			DOM.append(this._detailsButtonContainer!, this._toggleMessageDetailButton!.element);
 		} else {
@@ -379,7 +378,7 @@ export abstract class Modal extends Disposable implements IThemable {
 		}));
 
 		this.layout(DOM.getTotalHeight(this._modalBodySection!));
-		this._telemetryService.createActionEvent(TelemetryKeys.TelemetryView.Shell, TelemetryKeys.ModalDialogOpened)
+		this._telemetryService.createActionEvent(TelemetryKeys.TelemetryView.Shell, TelemetryKeys.TelemetryAction.ModalDialogOpened)
 			.withAdditionalProperties({ name: this._name })
 			.send();
 	}
@@ -392,14 +391,15 @@ export abstract class Modal extends Disposable implements IThemable {
 	/**
 	 * Hides the modal and removes key listeners
 	 */
-	protected hide(reason?: string) {
+	protected hide(reason?: string, currentPageName?: string): void {
 		this._modalShowingContext.get()!.pop();
 		this._bodyContainer!.remove();
 		this.disposableStore.clear();
-		this._telemetryService.createActionEvent(TelemetryKeys.TelemetryView.Shell, TelemetryKeys.ModalDialogClosed)
+		this._telemetryService.createActionEvent(TelemetryKeys.TelemetryView.Shell, TelemetryKeys.TelemetryAction.ModalDialogClosed)
 			.withAdditionalProperties({
 				name: this._name,
-				reason: reason
+				reason: reason,
+				currentPageName: currentPageName
 			})
 			.send();
 		this.restoreKeyboardFocus();
@@ -436,7 +436,7 @@ export abstract class Modal extends Disposable implements IThemable {
 	 * @param onSelect The callback to call when the button is selected
 	 */
 	protected findFooterButton(label: string): Button | undefined {
-		return find(this._footerButtons, e => {
+		return this._footerButtons.find(e => {
 			try {
 				return e && e.element.innerText === label;
 			} catch {
@@ -450,7 +450,7 @@ export abstract class Modal extends Disposable implements IThemable {
 	* @param label Label on the button
 	*/
 	protected removeFooterButton(label: string): void {
-		let buttonIndex = firstIndex(this._footerButtons, e => {
+		let buttonIndex = this._footerButtons.findIndex(e => {
 			return e && e.element && e.element.innerText === label;
 		});
 		if (buttonIndex > -1 && buttonIndex < this._footerButtons.length) {

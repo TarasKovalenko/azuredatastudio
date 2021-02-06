@@ -5,6 +5,7 @@
 
 declare module 'azdata-ext' {
 	import { SemVer } from 'semver';
+	import * as vscode from 'vscode';
 
 	/**
 	 * Covers defining what the azdata extension exports to other extensions
@@ -15,6 +16,8 @@ declare module 'azdata-ext' {
 	export const enum extension {
 		name = 'Microsoft.azdata'
 	}
+
+	export type AdditionalEnvVars = { [key: string]: string};
 
 	export interface ErrorWithLink extends Error {
 		messageWithLink: string;
@@ -125,7 +128,12 @@ declare module 'azdata-ext' {
 		},
 		spec: {
 			limits?: {
-				vcores?: number // 4
+				memory?: string // "10Gi"
+				vcores?: string // "4"
+			},
+			requests?: {
+				memory?: string // "10Gi"
+				vcores?: string // "4"
 			}
 			service: {
 				type: string // "NodePort"
@@ -143,7 +151,9 @@ declare module 'azdata-ext' {
 		},
 		status: {
 			readyReplicas: string, // "1/1"
-			state: string, // "Ready"
+			state: string, // "Ready",
+			logSearchDashboard: string, // https://127.0.0.1:30777/kibana/app/kibana#/discover?_a=(query:(language:kuery,query:'custom_resource_name:miaa1'))
+			metricsDashboard: string, // https://127.0.0.1:30777/grafana/d/40q72HnGk/sql-managed-instance-metrics?var-hostname=miaa1-0
 			externalEndpoint?: string // "10.91.86.39:32718"
 		}
 	}
@@ -170,7 +180,8 @@ declare module 'azdata-ext' {
 				}
 			},
 			scale: {
-				shards: number // 1
+				shards: number, // 1 (shards was renamed to workers, kept here for backwards compatibility)
+				workers: number // 1
 			},
 			scheduling: {
 				default: {
@@ -208,7 +219,9 @@ declare module 'azdata-ext' {
 		status: {
 			externalEndpoint: string, // "10.130.12.136:26630"
 			readyPods: string, // "1/1",
-			state: string // "Ready"
+			state: string, // "Ready"
+			logSearchDashboard: string, // https://127.0.0.1:30777/kibana/app/kibana#/discover?_a=(query:(language:kuery,query:'custom_resource_name:pg1'))
+			metricsDashboard: string, // https://127.0.0.1:30777/grafana/d/40q72HnGk/sql-managed-instance-metrics?var-hostname=pg1
 		}
 	}
 
@@ -220,23 +233,25 @@ declare module 'azdata-ext' {
 		code?: number
 	}
 
+	export interface AzdataSession extends vscode.Disposable { }
+
 	export interface IAzdataApi {
 		arc: {
 			dc: {
-				create(namespace: string, name: string, connectivityMode: string, resourceGroup: string, location: string, subscription: string, profileName?: string, storageClass?: string): Promise<AzdataOutput<void>>,
+				create(namespace: string, name: string, connectivityMode: string, resourceGroup: string, location: string, subscription: string, profileName?: string, storageClass?: string, additionalEnvVars?: AdditionalEnvVars, session?: AzdataSession): Promise<AzdataOutput<void>>,
 				endpoint: {
-					list(): Promise<AzdataOutput<DcEndpointListResult[]>>
+					list(additionalEnvVars?: AdditionalEnvVars, session?: AzdataSession): Promise<AzdataOutput<DcEndpointListResult[]>>
 				},
 				config: {
-					list(): Promise<AzdataOutput<DcConfigListResult[]>>,
-					show(): Promise<AzdataOutput<DcConfigShowResult>>
+					list(additionalEnvVars?: AdditionalEnvVars, session?: AzdataSession): Promise<AzdataOutput<DcConfigListResult[]>>,
+					show(additionalEnvVars?: AdditionalEnvVars, session?: AzdataSession): Promise<AzdataOutput<DcConfigShowResult>>
 				}
 			},
 			postgres: {
 				server: {
-					delete(name: string): Promise<AzdataOutput<void>>,
-					list(): Promise<AzdataOutput<PostgresServerListResult[]>>,
-					show(name: string): Promise<AzdataOutput<PostgresServerShowResult>>,
+					delete(name: string, additionalEnvVars?: AdditionalEnvVars, session?: AzdataSession): Promise<AzdataOutput<void>>,
+					list(additionalEnvVars?: AdditionalEnvVars, session?: AzdataSession): Promise<AzdataOutput<PostgresServerListResult[]>>,
+					show(name: string, additionalEnvVars?: AdditionalEnvVars, session?: AzdataSession): Promise<AzdataOutput<PostgresServerShowResult>>,
 					edit(
 						name: string,
 						args: {
@@ -252,25 +267,49 @@ declare module 'azdata-ext' {
 							replaceEngineSettings?: boolean,
 							workers?: number
 						},
-						additionalEnvVars?: { [key: string]: string }): Promise<AzdataOutput<void>>
+						engineVersion?: string,
+						additionalEnvVars?: AdditionalEnvVars,
+						session?: AzdataSession
+					): Promise<AzdataOutput<void>>
 				}
 			},
 			sql: {
 				mi: {
-					delete(name: string): Promise<AzdataOutput<void>>,
-					list(): Promise<AzdataOutput<SqlMiListResult[]>>,
-					show(name: string): Promise<AzdataOutput<SqlMiShowResult>>
+					delete(name: string, additionalEnvVars?: AdditionalEnvVars, session?: AzdataSession): Promise<AzdataOutput<void>>,
+					list(additionalEnvVars?: AdditionalEnvVars, session?: AzdataSession): Promise<AzdataOutput<SqlMiListResult[]>>,
+					show(name: string, additionalEnvVars?: AdditionalEnvVars, session?: AzdataSession): Promise<AzdataOutput<SqlMiShowResult>>,
+					edit(
+						name: string,
+						args: {
+							coresLimit?: string,
+							coresRequest?: string,
+							memoryLimit?: string,
+							memoryRequest?: string,
+							noWait?: boolean,
+						},
+						additionalEnvVars?: AdditionalEnvVars,
+						session?: AzdataSession
+					): Promise<AzdataOutput<void>>
 				}
 			}
 		},
-		getPath(): string,
-		login(endpoint: string, username: string, password: string): Promise<AzdataOutput<any>>,
+		getPath(): Promise<string>,
+		login(endpoint: string, username: string, password: string, additionalEnvVars?: AdditionalEnvVars): Promise<AzdataOutput<void>>,
+		/**
+		 * Acquires a session for the specified controller, which will log in to the specified controller and then block all other commands
+		 * that are not part of the original session from executing until the session is released (disposed).
+		 * @param endpoint
+		 * @param username
+		 * @param password
+		 * @param additionalEnvVars
+		 */
+		acquireSession(endpoint: string, username: string, password: string, additionalEnvVars?: AdditionalEnvVars): Promise<AzdataSession>,
 		/**
 		 * The semVersion corresponding to this installation of azdata. version() method should have been run
 		 * before fetching this value to ensure that correct value is returned. This is almost always correct unless
 		 * Azdata has gotten reinstalled in the background after this IAzdataApi object was constructed.
 		 */
-		getSemVersion(): SemVer,
+		getSemVersion(): Promise<SemVer>,
 		version(): Promise<AzdataOutput<string>>
 	}
 
@@ -280,7 +319,7 @@ declare module 'azdata-ext' {
 		/**
 		 * returns true if AZDATA CLI EULA has been previously accepted by the user.
 		 */
-		isEulaAccepted(): boolean;
+		isEulaAccepted(): Promise<boolean>;
 
 		/**
 		 * Prompts user to accept EULA. Stores and returns the user response to EULA prompt.
@@ -289,6 +328,7 @@ declare module 'azdata-ext' {
 		 * pre-requisite, the calling code has to ensure that the EULA has not yet been previously accepted by the user. The code can use @see isEulaAccepted() call to ascertain this.
 		 * returns true if the user accepted the EULA.
 		 */
-		promptForEula(requireUserAction?: boolean): Promise<boolean>
+		promptForEula(requireUserAction?: boolean): Promise<boolean>;
+
 	}
 }

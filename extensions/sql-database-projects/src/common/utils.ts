@@ -8,6 +8,8 @@ import * as os from 'os';
 import * as constants from './constants';
 import * as path from 'path';
 import * as glob from 'fast-glob';
+import * as dataworkspace from 'dataworkspace';
+import * as mssql from '../../../mssql';
 import { promises as fs } from 'fs';
 
 /**
@@ -216,7 +218,7 @@ export function isValidSqlCmdVariableName(name: string | undefined): boolean {
 	return true;
 }
 
-/*
+/**
  * Recursively gets all the sqlproj files at any depth in a folder
  * @param folderPath
  */
@@ -227,4 +229,51 @@ export async function getSqlProjectFilesInFolder(folderPath: string): Promise<st
 	const results = await glob(sqlprojFilter);
 
 	return results;
+}
+
+/**
+ * Get all the projects in the workspace that are sqlproj
+ */
+export function getSqlProjectsInWorkspace(): vscode.Uri[] {
+	const api = getDataWorkspaceExtensionApi();
+	return api.getProjectsInWorkspace().filter((p: vscode.Uri) => path.extname(p.fsPath) === constants.sqlprojExtension);
+}
+
+export function getDataWorkspaceExtensionApi(): dataworkspace.IExtension {
+	const extension = vscode.extensions.getExtension(dataworkspace.extension.name)!;
+	return extension.exports;
+}
+
+/*
+ * Returns the default deployment options from DacFx
+ */
+export async function GetDefaultDeploymentOptions(): Promise<mssql.DeploymentOptions> {
+	const service = (vscode.extensions.getExtension(mssql.extension.name)!.exports as mssql.IExtension).schemaCompare;
+	const result = await service.schemaCompareGetDefaultOptions();
+
+	return result.defaultDeploymentOptions;
+}
+
+export interface IPackageInfo {
+	name: string;
+	fullName: string;
+	version: string;
+	aiKey: string;
+}
+
+export function getPackageInfo(packageJson?: any): IPackageInfo | undefined {
+	if (!packageJson) {
+		packageJson = require('../../package.json');
+	}
+
+	if (packageJson) {
+		return {
+			name: packageJson.name,
+			fullName: `${packageJson.publisher}.${packageJson.name}`,
+			version: packageJson.version,
+			aiKey: packageJson.aiKey
+		};
+	}
+
+	return undefined;
 }

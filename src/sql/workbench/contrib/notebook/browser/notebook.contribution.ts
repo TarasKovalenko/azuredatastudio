@@ -211,11 +211,6 @@ configurationRegistry.registerConfiguration({
 			'default': false,
 			'description': localize('notebook.showAllKernels', "(Preview) show all kernels for the current notebook provider.")
 		},
-		'notebook.showNotebookConvertActions': {
-			'type': 'boolean',
-			'default': false,
-			'description': localize('notebook.showNotebookConvertActions', "(Preview) Show buttons for converting a Notebook to and from SQL.")
-		},
 		'notebook.allowAzureDataStudioCommands': {
 			'type': 'boolean',
 			'default': false,
@@ -230,6 +225,17 @@ configurationRegistry.registerConfiguration({
 			'type': 'boolean',
 			'default': true,
 			'description': localize('notebook.setRichTextViewByDefault', "Set Rich Text View mode by default for text cells")
+		},
+		'notebook.saveConnectionName': {
+			'type': 'boolean',
+			'default': false,
+			'description': localize('notebook.saveConnectionName', "(Preview) Save connection name in notebook metadata.")
+		},
+		'notebook.markdownPreviewLineHeight': {
+			'type': 'number',
+			'default': 1.5,
+			'minimum': 1,
+			'description': localize('notebook.markdownPreviewLineHeight', "Controls the line height used in the notebook markdown preview. This number is relative to the font size.")
 		}
 	}
 });

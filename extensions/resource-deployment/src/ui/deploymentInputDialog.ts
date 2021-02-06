@@ -12,7 +12,7 @@ import { INotebookService } from '../services/notebookService';
 import { IPlatformService } from '../services/platformService';
 import { DialogBase } from './dialogBase';
 import { Model } from './model';
-import { initializeDialog, InputComponentInfo, InputComponents, setModelValues, Validator } from './modelViewUtils';
+import { initializeDialog, InputComponent, InputComponentInfo, InputComponents, setModelValues, Validator } from './modelViewUtils';
 import { IToolsService } from '../services/toolsService';
 
 const localize = nls.loadMessageBundle();
@@ -69,7 +69,7 @@ export class DeploymentInputDialog extends DialogBase {
 			onNewDisposableCreated: (disposable: vscode.Disposable): void => {
 				this._toDispose.push(disposable);
 			},
-			onNewInputComponentCreated: (name: string, inputComponentInfo: InputComponentInfo): void => {
+			onNewInputComponentCreated: (name: string, inputComponentInfo: InputComponentInfo<InputComponent>): void => {
 				this.inputComponents[name] = inputComponentInfo;
 			},
 			onNewValidatorCreated: (validator: Validator): void => {
@@ -105,7 +105,7 @@ export class DeploymentInputDialog extends DialogBase {
 				const notebook = Array.isArray(this.dialogInfo.notebook) ?
 					this.dialogInfo.notebook.find(nb => nb.type === model.getStringValue(NotebookTypeVariableName))?.path :
 					this.dialogInfo.notebook;
-				this.notebookService.launchNotebook(notebook!).catch(error => {
+				this.notebookService.openNotebook(notebook!).catch(error => {
 					vscode.window.showErrorMessage(error);
 				});
 			}

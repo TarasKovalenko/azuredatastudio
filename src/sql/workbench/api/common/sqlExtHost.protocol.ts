@@ -583,7 +583,7 @@ export interface MainThreadDataProtocolShape extends IDisposable {
 	$registerAgentServicesProvider(providerId: string, handle: number): Promise<any>;
 	$registerSerializationProvider(providerId: string, handle: number): Promise<any>;
 	$registerSqlAssessmentServicesProvider(providerId: string, handle: number): Promise<any>;
-	$registerDataGridProvider(providerId: string, handle: number): void;
+	$registerDataGridProvider(providerId: string, title: string, handle: number): void;
 	$unregisterProvider(handle: number): Promise<any>;
 	$onConnectionComplete(handle: number, connectionInfoSummary: azdata.ConnectionInfoSummary): void;
 	$onIntelliSenseCacheComplete(handle: number, connectionUri: string): void;
@@ -615,7 +615,8 @@ export interface MainThreadDataProtocolShape extends IDisposable {
 }
 
 export interface MainThreadConnectionManagementShape extends IDisposable {
-	$registerConnectionEventListener(handle: number, providerId: string): void;
+	$registerConnectionEventListener(handle: number): void;
+	$unregisterConnectionEventListener(handle: number): void;
 	$getConnections(activeConnectionsOnly?: boolean): Thenable<azdata.connection.ConnectionProfile[]>;
 	$getConnection(uri: string): Thenable<azdata.connection.ConnectionProfile>;
 	$getActiveConnections(): Thenable<azdata.connection.Connection[]>;
@@ -657,7 +658,8 @@ export const SqlMainContext = {
 	MainThreadQueryEditor: createMainId<MainThreadQueryEditorShape>('MainThreadQueryEditor'),
 	MainThreadNotebook: createMainId<MainThreadNotebookShape>('MainThreadNotebook'),
 	MainThreadNotebookDocumentsAndEditors: createMainId<MainThreadNotebookDocumentsAndEditorsShape>('MainThreadNotebookDocumentsAndEditors'),
-	MainThreadExtensionManagement: createMainId<MainThreadExtensionManagementShape>('MainThreadExtensionManagement')
+	MainThreadExtensionManagement: createMainId<MainThreadExtensionManagementShape>('MainThreadExtensionManagement'),
+	MainThreadWorkspace: createMainId<MainThreadWorkspaceShape>('MainThreadWorkspace')
 };
 
 export const SqlExtHostContext = {
@@ -678,7 +680,8 @@ export const SqlExtHostContext = {
 	ExtHostQueryEditor: createExtId<ExtHostQueryEditorShape>('ExtHostQueryEditor'),
 	ExtHostNotebook: createExtId<ExtHostNotebookShape>('ExtHostNotebook'),
 	ExtHostNotebookDocumentsAndEditors: createExtId<ExtHostNotebookDocumentsAndEditorsShape>('ExtHostNotebookDocumentsAndEditors'),
-	ExtHostExtensionManagement: createExtId<ExtHostExtensionManagementShape>('ExtHostExtensionManagement')
+	ExtHostExtensionManagement: createExtId<ExtHostExtensionManagementShape>('ExtHostExtensionManagement'),
+	ExtHostWorkspace: createExtId<ExtHostWorkspaceShape>('ExtHostWorkspace')
 };
 
 export interface MainThreadDashboardShape extends IDisposable {
@@ -755,6 +758,16 @@ export interface ExtHostBackgroundTaskManagementShape {
 	$removeTask(operationId: string): void;
 }
 
+export interface ExtHostWorkspaceShape {
+	$createWorkspace(folder: vscode.Uri, workspaceFile: vscode.Uri): Promise<void>;
+	$enterWorkspace(workspaceFile: vscode.Uri): Promise<void>;
+}
+
+export interface MainThreadWorkspaceShape {
+	$createWorkspace(folder: vscode.Uri, workspaceFile: vscode.Uri): Promise<void>;
+	$enterWorkspace(workspaceFile: vscode.Uri): Promise<void>;
+}
+
 export interface MainThreadBackgroundTaskManagementShape extends IDisposable {
 	$registerTask(taskInfo: azdata.TaskInfo): void;
 	$updateTask(taskProgressInfo: azdata.TaskProgressInfo): void;
@@ -764,7 +777,7 @@ export interface MainThreadModelViewShape extends IDisposable {
 	$registerProvider(id: string): void;
 	$initializeModel(handle: number, rootComponent: IComponentShape): Thenable<void>;
 	$clearContainer(handle: number, componentId: string): Thenable<void>;
-	$addToContainer(handle: number, containerId: string, item: IItemConfig, index?: number): Thenable<void>;
+	$addToContainer(handle: number, containerId: string, items: { itemConfig: IItemConfig, index?: number }[]): Thenable<void>;
 	$removeFromContainer(handle: number, containerId: string, item: IItemConfig): Thenable<void>;
 	$setLayout(handle: number, componentId: string, layout: any): Thenable<void>;
 	$setItemLayout(handle: number, componentId: string, item: IItemConfig): Thenable<void>;
@@ -804,7 +817,7 @@ export interface ExtHostModelViewDialogShape {
 }
 
 export interface MainThreadModelViewDialogShape extends IDisposable {
-	$openEditor(handle: number, modelViewId: string, title: string, options?: azdata.ModelViewEditorOptions, position?: vscode.ViewColumn): Thenable<void>;
+	$openEditor(handle: number, modelViewId: string, title: string, name?: string, options?: azdata.ModelViewEditorOptions, position?: vscode.ViewColumn): Thenable<void>;
 	$openDialog(handle: number, dialogName?: string): Thenable<void>;
 	$closeDialog(handle: number): Thenable<void>;
 	$setDialogDetails(handle: number, details: IModelViewDialogDetails): Thenable<void>;
@@ -830,6 +843,7 @@ export interface MainThreadQueryEditorShape extends IDisposable {
 	$createQueryTab(fileUri: string, title: string, content: string): void;
 	$setQueryExecutionOptions(fileUri: string, options: azdata.QueryExecutionOptions): Thenable<void>;
 	$registerQueryInfoListener(handle: number): void;
+	$unregisterQueryInfoListener(handle: number): void;
 }
 
 export interface ExtHostNotebookShape {
@@ -936,7 +950,7 @@ export interface MainThreadNotebookDocumentsAndEditorsShape extends IDisposable 
 	$runAllCells(id: string, startCellUri?: UriComponents, endCellUri?: UriComponents): Promise<boolean>;
 	$clearOutput(id: string, cellUri: UriComponents): Promise<boolean>;
 	$clearAllOutputs(id: string): Promise<boolean>;
-	$changeKernel(id: string, kernel: azdata.nb.IKernelInfo): Promise<boolean>;
+	$changeKernel(id: string, kernel: azdata.nb.IKernelSpec): Promise<boolean>;
 	$registerNavigationProvider(providerId: string, handle: number);
 }
 

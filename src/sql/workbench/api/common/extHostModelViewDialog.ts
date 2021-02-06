@@ -82,6 +82,7 @@ class ModelViewEditorImpl extends ModelViewPanelImpl implements azdata.workspace
 		extension: IExtensionDescription,
 		private _proxy: MainThreadModelViewDialogShape,
 		private _title: string,
+		private _name: string,
 		private _options: azdata.ModelViewEditorOptions
 	) {
 		super('modelViewEditor', extHostModelViewDialog, extHostModelView, extension);
@@ -89,7 +90,7 @@ class ModelViewEditorImpl extends ModelViewPanelImpl implements azdata.workspace
 	}
 
 	public openEditor(position?: vscode.ViewColumn): Thenable<void> {
-		return this._proxy.$openEditor(this.handle, this._modelViewId, this._title, this._options, position);
+		return this._proxy.$openEditor(this.handle, this._modelViewId, this._title, this._name, this._options, position);
 	}
 
 	public get isDirty(): boolean {
@@ -323,7 +324,8 @@ class WizardPageImpl extends ModelViewPanelImpl implements azdata.window.WizardP
 	constructor(public title: string,
 		extHostModelViewDialog: ExtHostModelViewDialog,
 		extHostModelView: ExtHostModelViewShape,
-		extension: IExtensionDescription) {
+		extension: IExtensionDescription,
+		public pageName?: string) {
 		super('modelViewWizardPage', extHostModelViewDialog, extHostModelView, extension);
 	}
 
@@ -648,14 +650,16 @@ export class ExtHostModelViewDialog implements ExtHostModelViewDialogShape {
 		this._proxy.$closeDialog(handle);
 	}
 
-	public createModelViewEditor(title: string, extension: IExtensionDescription, options?: azdata.ModelViewEditorOptions): azdata.workspace.ModelViewEditor {
-		let editor = new ModelViewEditorImpl(this, this._extHostModelView, extension, this._proxy, title, options);
+	public createModelViewEditor(title: string, extension: IExtensionDescription, name?: string, options?: azdata.ModelViewEditorOptions): azdata.workspace.ModelViewEditor {
+		name = name ?? 'ModelViewEditor';
+		let editor = new ModelViewEditorImpl(this, this._extHostModelView, extension, this._proxy, title, name, options);
 		editor.handle = this.getHandle(editor);
 		return editor;
 	}
 
-	public createModelViewDashboard(title: string, options: azdata.ModelViewDashboardOptions | undefined, extension: IExtensionDescription): azdata.window.ModelViewDashboard {
-		const editor = this.createModelViewEditor(title, extension, { supportsSave: false }) as ModelViewEditorImpl;
+	public createModelViewDashboard(title: string, name: string | undefined, options: azdata.ModelViewDashboardOptions | undefined, extension: IExtensionDescription): azdata.window.ModelViewDashboard {
+		name = name ?? 'ModelViewDashboard';
+		const editor = this.createModelViewEditor(title, extension, name, { supportsSave: false }) as ModelViewEditorImpl;
 		return new ModelViewDashboardImpl(editor, options);
 	}
 
@@ -755,8 +759,8 @@ export class ExtHostModelViewDialog implements ExtHostModelViewDialogShape {
 		this._pageInfoChangedCallbacks.set(handle, callback);
 	}
 
-	public createWizardPage(title: string, extension?: IExtensionDescription): azdata.window.WizardPage {
-		let page = new WizardPageImpl(title, this, this._extHostModelView, extension);
+	public createWizardPage(title: string, extension?: IExtensionDescription, pageName?: string): azdata.window.WizardPage {
+		let page = new WizardPageImpl(title, this, this._extHostModelView, extension, pageName);
 		page.handle = this.getHandle(page);
 		return page;
 	}
@@ -778,7 +782,8 @@ export class ExtHostModelViewDialog implements ExtHostModelViewDialogShape {
 			customButtons: page.customButtons ? page.customButtons.map(button => this.getHandle(button)) : undefined,
 			enabled: page.enabled,
 			title: page.title,
-			description: page.description
+			description: page.description,
+			pageName: page.pageName
 		});
 	}
 

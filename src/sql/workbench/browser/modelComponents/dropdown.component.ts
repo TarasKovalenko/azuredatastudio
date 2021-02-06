@@ -19,15 +19,16 @@ import { attachSelectBoxStyler } from 'vs/platform/theme/common/styler';
 import { IWorkbenchThemeService } from 'vs/workbench/services/themes/common/workbenchThemeService';
 import { IContextViewService } from 'vs/platform/contextview/browser/contextView';
 import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
-import { find } from 'vs/base/common/arrays';
 import { IComponent, IComponentDescriptor, IModelStore, ComponentEventType } from 'sql/platform/dashboard/browser/interfaces';
 import { localize } from 'vs/nls';
+import { onUnexpectedError } from 'vs/base/common/errors';
+import { ILogService } from 'vs/platform/log/common/log';
 
 @Component({
 	selector: 'modelview-dropdown',
 	template: `
 
-	<div [style.width]="getWidth()">
+	<div [ngStyle]="CSSStyles">
 		<div [style.display]="getLoadingDisplay()" style="width: 100%; position: relative">
 			<div class="modelview-loadingComponent-spinner" style="position:absolute; right: 0px; margin-right: 5px; height:15px; z-index:1" #spinnerElement></div>
 			<div [style.display]="getLoadingDisplay()" #loadingBox style="width: 100%;"></div>
@@ -53,17 +54,14 @@ export default class DropDownComponent extends ComponentBase<azdata.DropDownProp
 		@Inject(IWorkbenchThemeService) private themeService: IWorkbenchThemeService,
 		@Inject(IContextViewService) private contextViewService: IContextViewService,
 		@Inject(forwardRef(() => ElementRef)) el: ElementRef,
-		@Inject(IConfigurationService) private readonly configurationService: IConfigurationService
+		@Inject(IConfigurationService) private readonly configurationService: IConfigurationService,
+		@Inject(ILogService) logService: ILogService
 	) {
-		super(changeRef, el);
+		super(changeRef, el, logService);
 
 		if (this.configurationService) {
 			this._isInAccessibilityMode = this.configurationService.getValue('editor.accessibilitySupport') === 'on';
 		}
-	}
-
-	ngOnInit(): void {
-		this.baseInit();
 	}
 
 	ngAfterViewInit(): void {
@@ -73,8 +71,7 @@ export default class DropDownComponent extends ComponentBase<azdata.DropDownProp
 				strictSelection: false,
 				placeholder: '',
 				maxHeight: 125,
-				ariaLabel: '',
-				actionLabel: ''
+				ariaLabel: ''
 			};
 			this._editableDropdown = new Dropdown(this._editableDropDownContainer.nativeElement, this.contextViewService,
 				dropdownOptions);
@@ -83,7 +80,7 @@ export default class DropDownComponent extends ComponentBase<azdata.DropDownProp
 			this._register(attachEditableDropdownStyler(this._editableDropdown, this.themeService));
 			this._register(this._editableDropdown.onValueChange(async e => {
 				if (this.editable) {
-					this.setSelectedValue(this._editableDropdown.value);
+					this.setSelectedValue(e);
 					await this.validate();
 					this.fireEvent({
 						eventType: ComponentEventType.onDidChange,
@@ -100,8 +97,10 @@ export default class DropDownComponent extends ComponentBase<azdata.DropDownProp
 			this._register(attachSelectBoxStyler(this._selectBox, this.themeService));
 			this._register(this._selectBox.onDidSelect(async e => {
 				if (!this.editable) {
-					this.setSelectedValue(this._selectBox.value);
+					this.setSelectedValue(e.selected);
 					await this.validate();
+					// This is currently sending the ISelectData as the args, but to change this now would be a breaking
+					// change for extensions using it. So while not ideal this should be left as is for the time being.
 					this.fireEvent({
 						eventType: ComponentEventType.onDidChange,
 						args: e
@@ -116,6 +115,7 @@ export default class DropDownComponent extends ComponentBase<azdata.DropDownProp
 		this._register(this._loadingBox);
 		this._register(attachSelectBoxStyler(this._loadingBox, this.themeService));
 		this._loadingBoxContainer.nativeElement.className = ''; // Removing the dropdown arrow icon from the right
+		this.baseInit();
 	}
 
 	ngOnDestroy(): void {
@@ -165,7 +165,7 @@ export default class DropDownComponent extends ComponentBase<azdata.DropDownProp
 
 		this._selectBox.selectElem.required = this.required;
 		this._editableDropdown.inputElement.required = this.required;
-		this.validate();
+		this.validate().catch(onUnexpectedError);
 	}
 
 	private getValues(): string[] {
@@ -186,7 +186,7 @@ export default class DropDownComponent extends ComponentBase<azdata.DropDownProp
 	private getSelectedValue(): string {
 		if (this.values && this.values.length > 0 && this.valuesHaveDisplayName()) {
 			let selectedValue = <azdata.CategoryValue>this.value || <azdata.CategoryValue>this.values[0];
-			let valueCategory = find(<azdata.CategoryValue[]>this.values, v => v.name === selectedValue.name);
+			let valueCategory = (<azdata.CategoryValue[]>this.values).find(v => v.name === selectedValue.name);
 			return valueCategory && valueCategory.displayName;
 		} else {
 			if (!this.value && this.values && this.values.length > 0) {
@@ -198,7 +198,7 @@ export default class DropDownComponent extends ComponentBase<azdata.DropDownProp
 
 	private setSelectedValue(newValue: string): void {
 		if (this.values && this.valuesHaveDisplayName()) {
-			let valueCategory = find((<azdata.CategoryValue[]>this.values), v => v.displayName === newValue);
+			let valueCategory = (<azdata.CategoryValue[]>this.values).find(v => v.displayName === newValue);
 			this.value = valueCategory;
 		} else {
 			this.value = newValue;
@@ -285,5 +285,11 @@ export default class DropDownComponent extends ComponentBase<azdata.DropDownProp
 
 	public getStatusText(): string {
 		return this.loading ? this.loadingText : this.loadingCompletedText;
+	}
+
+	public get CSSStyles(): azdata.CssStyles {
+		return this.mergeCss(super.CSSStyles, {
+			'width': this.getWidth()
+		});
 	}
 }

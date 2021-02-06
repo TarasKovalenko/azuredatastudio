@@ -16,6 +16,7 @@ export interface ViewTestContext {
 
 export function createViewContext(): ViewTestContext {
 	let onClick: vscode.EventEmitter<any> = new vscode.EventEmitter<any>();
+	let onChange: vscode.EventEmitter<boolean> = new vscode.EventEmitter<boolean>();
 
 	let apiWrapper = TypeMoq.Mock.ofType(ApiWrapper);
 	let componentBase: azdata.Component = {
@@ -38,7 +39,8 @@ export function createViewContext(): ViewTestContext {
 	});
 	let radioButton: azdata.RadioButtonComponent = Object.assign({}, componentBase, {
 		checked: true,
-		onDidClick: onClick.event
+		onDidClick: onClick.event,
+		onDidChangeCheckedState: onChange.event,
 	});
 	let checkbox: azdata.CheckBoxComponent = Object.assign({}, componentBase, {
 		checked: true,
@@ -86,7 +88,7 @@ export function createViewContext(): ViewTestContext {
 		withProps: () => checkBoxBuilder,
 		withValidation: () => checkBoxBuilder
 	};
-	let inputBox: () => azdata.InputBoxComponent = () => Object.assign({}, componentBase, {
+	let inputBox: () => azdata.InputBoxComponent = () => Object.assign(<azdata.InputBoxComponent>Object.assign({}, componentBase), {
 		onTextChanged: onClick.event!,
 		onEnterKeyPressed: undefined!,
 		value: ''
@@ -105,6 +107,7 @@ export function createViewContext(): ViewTestContext {
 	let declarativeTable: () => azdata.DeclarativeTableComponent = () => Object.assign({}, componentBase, {
 		onDataChanged: undefined!,
 		onRowSelected: undefined!,
+		setFilter: undefined!,
 		data: [],
 		columns: []
 	});
@@ -227,6 +230,7 @@ export function createViewContext(): ViewTestContext {
 		validate: undefined!,
 		initializeModel: () => { return Promise.resolve(); },
 		modelBuilder: {
+			listView: undefined!,
 			radioCardGroup: undefined!,
 			navContainer: undefined!,
 			divContainer: () => divBuilder,
@@ -258,7 +262,8 @@ export function createViewContext(): ViewTestContext {
 			hyperlink: () => hyperLinkBuilder,
 			tabbedPanel: undefined!,
 			separator: undefined!,
-			propertiesContainer: undefined!
+			propertiesContainer: undefined!,
+			infoBox: undefined!
 		}
 	};
 	let tab: azdata.window.DialogTab = {

@@ -29,7 +29,6 @@ import { localize } from 'vs/nls';
 import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
 import { CmsConnectionController } from 'sql/workbench/services/connection/browser/cmsConnectionController';
 import { entries } from 'sql/base/common/collections';
-import { find } from 'vs/base/common/arrays';
 import { onUnexpectedError } from 'vs/base/common/errors';
 import { ILogService } from 'vs/platform/log/common/log';
 
@@ -43,7 +42,7 @@ export interface IConnectionComponentCallbacks {
 	onCreateNewServerGroup?: () => void;
 	onAdvancedProperties?: () => void;
 	onSetAzureTimeOut?: () => void;
-	onFetchDatabases?: (serverName: string, authenticationType: string, userName?: string, password?: string) => Promise<string[]>;
+	onFetchDatabases?: (serverName: string, authenticationType: string, userName?: string, password?: string, token?: string) => Promise<string[]>;
 	onAzureTenantSelection?: (azureTenantId?: string) => void;
 }
 
@@ -316,7 +315,7 @@ export class ConnectionDialogService implements IConnectionDialogService {
 			}
 			if (!isProviderInParams) {
 				let uniqueProvidersMap = this._connectionManagementService.getUniqueConnectionProvidersByNameMap(this._providerNameToDisplayNameMap);
-				this._currentProviderType = find(Object.keys(uniqueProvidersMap), (key) => uniqueProvidersMap[key] === input.selectedProviderDisplayName);
+				this._currentProviderType = Object.keys(uniqueProvidersMap).find((key) => uniqueProvidersMap[key] === input.selectedProviderDisplayName);
 			}
 		}
 		this._model.providerName = this._currentProviderType;
@@ -382,7 +381,7 @@ export class ConnectionDialogService implements IConnectionDialogService {
 		newProfile.saveProfile = true;
 		newProfile.generateNewId();
 		// If connecting from a query editor set "save connection" to false
-		if (this._params && this._params.input && this._params.connectionType === ConnectionType.editor) {
+		if (this._params?.connectionType === ConnectionType.editor) {
 			newProfile.saveProfile = false;
 		}
 		return newProfile;

@@ -309,6 +309,7 @@ import 'vs/workbench/contrib/url/browser/url.contribution';
 
 // Webview
 import 'vs/workbench/contrib/webview/browser/webview.contribution';
+import 'vs/workbench/contrib/webviewPanel/browser/webviewPanel.contribution';
 import 'vs/workbench/contrib/webviewView/browser/webviewView.contribution';
 import 'vs/workbench/contrib/customEditor/browser/customEditor.contribution';
 
@@ -330,7 +331,7 @@ import 'vs/workbench/contrib/terminal/browser/terminalView';
 import 'vs/workbench/contrib/relauncher/browser/relauncher.contribution';
 
 // Tasks
-// import 'vs/workbench/contrib/tasks/browser/task.contribution'; {{SQL CARBON EDIT}}
+import 'vs/workbench/contrib/tasks/browser/task.contribution';
 
 // Remote
 import 'vs/workbench/contrib/remote/common/remote.contribution';

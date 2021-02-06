@@ -7,7 +7,6 @@ import { ConnectionProfile } from 'sql/platform/connection/common/connectionProf
 import { Disposable } from 'vs/base/common/lifecycle';
 import { isUndefinedOrNull } from 'vs/base/common/types';
 import { assign } from 'vs/base/common/objects';
-import { find } from 'vs/base/common/arrays';
 
 export interface INewConnectionProfileGroup {
 	id?: string;
@@ -28,6 +27,8 @@ export class ConnectionProfileGroup extends Disposable implements IConnectionPro
 	public parentId?: string;
 	private _isRenamed = false;
 	public readonly isRoot: boolean = false;
+	public readonly textColor: string = 'white'; // This value should come from the constructor when issue: https://github.com/microsoft/azuredatastudio/issues/13138 is fixed
+
 	public constructor(
 		public name: string,
 		public parent?: ConnectionProfileGroup,
@@ -37,7 +38,7 @@ export class ConnectionProfileGroup extends Disposable implements IConnectionPro
 	) {
 		super();
 		this.parentId = parent ? parent.id : undefined;
-		if (this.name === ConnectionProfileGroup.RootGroupName) {
+		if (ConnectionProfileGroup.isRoot(this.name)) {
 			this.name = '';
 			this.isRoot = true;
 		}
@@ -108,7 +109,7 @@ export class ConnectionProfileGroup extends Disposable implements IConnectionPro
 	 * Returns true if all connections in the tree have valid options using the correct capabilities
 	 */
 	public get hasValidConnections(): boolean {
-		let invalidConnections = find(this._childConnections, c => !c.isConnectionOptionsValid);
+		let invalidConnections = this._childConnections.find(c => !c.isConnectionOptionsValid);
 		if (invalidConnections !== undefined) {
 			return false;
 		} else {

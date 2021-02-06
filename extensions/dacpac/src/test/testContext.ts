@@ -88,6 +88,7 @@ export function createViewContext(): ViewTestContext {
 			label: '',
 			checked: false,
 			onDidClick: onClick.event,
+			onDidChangeCheckedState: onValueChanged.event
 		});
 		return button;
 	};
@@ -195,6 +196,7 @@ export function createViewContext(): ViewTestContext {
 		data: [] as any[][],
 		columns: [] as string[],
 		onRowSelected: onClick.event,
+		appendData: (data: any[][]) => undefined,
 	});
 
 	let loadingComponent: () => azdata.LoadingComponent = () => Object.assign({}, componentBase, {
@@ -278,6 +280,7 @@ export function createViewContext(): ViewTestContext {
 		validate: undefined!,
 		initializeModel: () => { return Promise.resolve(); },
 		modelBuilder: {
+			listView: undefined!,
 			radioCardGroup: undefined!,
 			navContainer: undefined!,
 			divContainer: () => divBuilder,
@@ -309,7 +312,8 @@ export function createViewContext(): ViewTestContext {
 			hyperlink: () => undefined!,
 			tabbedPanel: undefined!,
 			separator: undefined!,
-			propertiesContainer: undefined!
+			propertiesContainer: undefined!,
+			infoBox: undefined!
 		}
 	};
 	return {

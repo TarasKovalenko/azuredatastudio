@@ -21,6 +21,13 @@ import { ICapabilitiesService } from 'sql/platform/capabilities/common/capabilit
 import { NotebookModel } from 'sql/workbench/services/notebook/browser/models/notebookModel';
 import { IModelContentChangedEvent } from 'vs/editor/common/model/textModelEvents';
 import type { FutureInternal } from 'sql/workbench/services/notebook/browser/interfaces';
+import { ICellValue, ResultSetSummary } from 'sql/workbench/services/query/common/query';
+import { QueryResultId } from 'sql/workbench/services/notebook/browser/models/cell';
+
+export enum ViewMode {
+	Notebook,
+	Views,
+}
 
 export interface ICellRange {
 	readonly start: number;
@@ -82,7 +89,7 @@ export interface IClientSession extends IDisposable {
 	/**
 	 * The current kernel associated with the document.
 	 */
-	readonly kernel: nb.IKernel | null;
+	readonly kernel: nb.IKernel | undefined;
 
 	/**
 	 * The current path associated with the client session.
@@ -133,7 +140,7 @@ export interface IClientSession extends IDisposable {
 	 */
 	readonly kernelDisplayName: string;
 
-	readonly cachedKernelSpec: nb.IKernelSpec;
+	readonly cachedKernelSpec: nb.IKernelSpec | undefined;
 
 	/**
 	 * Initializes the ClientSession, by starting the server and
@@ -149,7 +156,7 @@ export interface IClientSession extends IDisposable {
 	changeKernel(
 		options: nb.IKernelSpec,
 		oldKernel?: nb.IKernel
-	): Promise<nb.IKernel>;
+	): Promise<nb.IKernel | undefined>;
 
 	/**
 	 * Configure the current kernel associated with the document.
@@ -222,7 +229,7 @@ export interface INotebookModel {
 	/**
 	 * Cell List for this model
 	 */
-	readonly cells: ReadonlyArray<ICellModel>;
+	readonly cells: ReadonlyArray<ICellModel> | undefined;
 
 	/**
 	 * The active cell for this model. May be undefined
@@ -232,19 +239,15 @@ export interface INotebookModel {
 	/**
 	 * Client Session in the notebook, used for sending requests to the notebook service
 	 */
-	readonly clientSession: IClientSession;
+	readonly clientSession: IClientSession | undefined;
 	/**
 	 * Promise indicating when client session is ready to use.
 	 */
 	readonly sessionLoadFinished: Promise<void>;
 	/**
-	 * Promise indicating when output grid data is converted to mimeType and html.
-	 */
-	gridDataConversionComplete: Promise<any>;
-	/**
 	 * LanguageInfo saved in the notebook
 	 */
-	readonly languageInfo: nb.ILanguageInfo;
+	readonly languageInfo: nb.ILanguageInfo | undefined;
 	/**
 	 * Current default language for the notebook
 	 */
@@ -270,7 +273,7 @@ export interface INotebookModel {
 	 * Event fired on first initialization of the kernels and
 	 * on subsequent change events
 	 */
-	readonly kernelsChanged: Event<nb.IKernelSpec>;
+	readonly kernelsChanged: Event<nb.IKernel>;
 
 	/**
 	 * Default kernel
@@ -301,6 +304,17 @@ export interface INotebookModel {
 	readonly context: ConnectionProfile | undefined;
 
 	/**
+	 * The connection name (alias) saved in the notebook metadata,
+	 * or undefined if none.
+	 */
+	readonly savedConnectionName: string | undefined;
+
+	/**
+	 * The connection mode of the notebook (single vs multiple connections)
+	 */
+	multiConnectionMode: boolean;
+
+	/**
 	 * Event fired on first initialization of the cells and
 	 * on subsequent change events
 	 */
@@ -314,7 +328,7 @@ export interface INotebookModel {
 	/**
 	 * Event fired on active cell change
 	 */
-	readonly onActiveCellChanged: Event<ICellModel>;
+	readonly onActiveCellChanged: Event<ICellModel | undefined>;
 
 	/**
 	 * Event fired on cell type change
@@ -330,6 +344,22 @@ export interface INotebookModel {
 	 * Current notebook provider id
 	 */
 	providerId: string;
+
+	/**
+	 * View mode for this model. It determines what editor mode
+	 * will be displayed.
+	 */
+	viewMode: ViewMode;
+
+	/**
+	 * Add custom metadata values to the notebook
+	 */
+	setMetaValue(key: string, value: any);
+
+	/**
+	 * Get a custom metadata value from the notebook
+	 */
+	getMetaValue(key: string): any;
 
 	/**
 	 * Change the current kernel from the Kernel dropdown
@@ -389,7 +419,7 @@ export interface INotebookModel {
 	 * Get the standardKernelWithProvider by name
 	 * @param name The kernel name
 	 */
-	getStandardKernelFromName(name: string): IStandardKernelWithProvider;
+	getStandardKernelFromName(name: string): IStandardKernelWithProvider | undefined;
 
 	/** Event fired once we get call back from ConfigureConnection method in sqlops extension */
 	readonly onValidConnectionSelected: Event<boolean>;
@@ -449,6 +479,11 @@ export interface IOutputChangedEvent {
 	shouldScroll: boolean;
 }
 
+export interface ITableUpdatedEvent {
+	resultSet: ResultSetSummary;
+	rows: ICellValue[][];
+}
+
 export interface ICellModel {
 	cellUri: URI;
 	id: string;
@@ -457,13 +492,16 @@ export interface ICellModel {
 	source: string | string[];
 	cellType: CellType;
 	trustedMode: boolean;
+	metadata: any | undefined;
 	active: boolean;
 	hover: boolean;
 	executionCount: number | undefined;
 	readonly future: FutureInternal;
 	readonly outputs: ReadonlyArray<nb.ICellOutput>;
+	getOutputId(output: nb.ICellOutput): QueryResultId | undefined;
 	renderedOutputTextContent?: string[];
 	readonly onOutputsChanged: Event<IOutputChangedEvent>;
+	readonly onTableUpdated: Event<ITableUpdatedEvent>;
 	readonly onExecutionStateChange: Event<CellExecutionState>;
 	readonly executionState: CellExecutionState;
 	readonly notebookModel: NotebookModel;
@@ -477,7 +515,10 @@ export interface ICellModel {
 	stdInVisible: boolean;
 	readonly onLoaded: Event<string>;
 	isCollapsed: boolean;
+	isParameter: boolean;
+	isInjectedParameter: boolean;
 	readonly onCollapseStateChanged: Event<boolean>;
+	readonly onParameterStateChanged: Event<boolean>;
 	readonly onCellModeChanged: Event<boolean>;
 	modelContentChangedEvent: IModelContentChangedEvent;
 	isEditMode: boolean;
@@ -488,9 +529,7 @@ export interface ICellModel {
 	readonly onCellMarkdownModeChanged: Event<boolean>;
 	sendChangeToNotebook(change: NotebookChangeType): void;
 	cellSourceChanged: boolean;
-	gridDataConversionComplete: Promise<void>;
-	addGridDataConversionPromise(complete: Promise<void>): void;
-	updateOutputData(batchId: number, id: number, data: any): void;
+	readonly savedConnectionName: string | undefined;
 }
 
 export interface IModelFactory {

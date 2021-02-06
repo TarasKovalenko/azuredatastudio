@@ -17,6 +17,7 @@ import * as constants from '../common/constants';
 import * as utils from '../common/utils';
 import { Deferred } from '../common/promise';
 import { ConfigurePythonWizard } from '../dialog/configurePython/configurePythonWizard';
+import { IKernelInfo } from '../contracts/content';
 
 const localize = nls.loadMessageBundle();
 const msgInstallPkgProgress = localize('msgInstallPkgProgress', "Notebook dependencies installation is in progress");
@@ -39,9 +40,15 @@ export interface PythonInstallSettings {
 	installPath: string;
 	existingPython: boolean;
 	packages: PythonPkgDetails[];
+	packageUpgradeOnly?: boolean;
 }
 export interface IJupyterServerInstallation {
-	installCondaPackages(packages: PythonPkgDetails[], useMinVersion: boolean): Promise<void>;
+	/**
+	 * Installs the specified packages using conda
+	 * @param packages The list of packages to install
+	 * @param useMinVersionDefault Whether we install each package as a min version (>=) or exact version (==) by default
+	 */
+	installCondaPackages(packages: PythonPkgDetails[], useMinVersionDefault: boolean): Promise<void>;
 	configurePackagePaths(): Promise<void>;
 	startInstallProcess(forceInstall: boolean, installSettings?: PythonInstallSettings): Promise<void>;
 	getInstalledPipPackages(): Promise<PythonPkgDetails[]>;
@@ -51,12 +58,43 @@ export interface IJupyterServerInstallation {
 	getCondaExePath(): string;
 	executeBufferedCommand(command: string): Promise<string>;
 	executeStreamedCommand(command: string): Promise<void>;
-	installPipPackages(packages: PythonPkgDetails[], useMinVersion: boolean): Promise<void>;
+	/**
+	 * Installs the specified packages using pip
+	 * @param packages The list of packages to install
+	 * @param useMinVersionDefault Whether we install each package as a min version (>=) or exact version (==) by default
+	 */
+	installPipPackages(packages: PythonPkgDetails[], useMinVersionDefault: boolean): Promise<void>;
 	uninstallPipPackages(packages: PythonPkgDetails[]): Promise<void>;
 	pythonExecutable: string;
 	pythonInstallationPath: string;
-	installPythonPackage(backgroundOperation: azdata.BackgroundOperation, usingExistingPython: boolean, pythonInstallationPath: string, outputChannel: vscode.OutputChannel): Promise<void>;
 }
+
+export const requiredJupyterPkg: PythonPkgDetails = {
+	name: 'jupyter',
+	version: '1.0.0'
+};
+
+export const requiredPowershellPkg: PythonPkgDetails = {
+	name: 'powershell-kernel',
+	version: '0.1.4'
+};
+
+export const requiredSparkPackages: PythonPkgDetails[] = [
+	requiredJupyterPkg,
+	{
+		name: 'cryptography',
+		version: '3.2.1',
+		installExactVersion: true
+	},
+	{
+		name: 'sparkmagic',
+		version: '0.12.9'
+	}, {
+		name: 'pandas',
+		version: '0.24.2'
+	}
+];
+
 export class JupyterServerInstallation implements IJupyterServerInstallation {
 	public extensionPath: string;
 	public pythonBinPath: string;
@@ -100,35 +138,13 @@ export class JupyterServerInstallation implements IJupyterServerInstallation {
 		this._kernelSetupCache = new Map<string, boolean>();
 		this._requiredKernelPackages = new Map<string, PythonPkgDetails[]>();
 
-		let jupyterPkg = {
-			name: 'jupyter',
-			version: '1.0.0'
-		};
-		this._requiredKernelPackages.set(constants.python3DisplayName, [jupyterPkg]);
+		this._requiredKernelPackages.set(constants.python3DisplayName, [requiredJupyterPkg]);
+		this._requiredKernelPackages.set(constants.powershellDisplayName, [requiredJupyterPkg, requiredPowershellPkg]);
+		this._requiredKernelPackages.set(constants.pysparkDisplayName, requiredSparkPackages);
+		this._requiredKernelPackages.set(constants.sparkScalaDisplayName, requiredSparkPackages);
+		this._requiredKernelPackages.set(constants.sparkRDisplayName, requiredSparkPackages);
 
-		let powershellPkg = {
-			name: 'powershell-kernel',
-			version: '0.1.3'
-		};
-		this._requiredKernelPackages.set(constants.powershellDisplayName, [jupyterPkg, powershellPkg]);
-
-		let sparkPackages = [
-			jupyterPkg,
-			{
-				name: 'sparkmagic',
-				version: '0.12.9'
-			}, {
-				name: 'pandas',
-				version: '0.24.2'
-			}, {
-				name: 'prose-codeaccelerator',
-				version: '1.3.0'
-			}];
-		this._requiredKernelPackages.set(constants.pysparkDisplayName, sparkPackages);
-		this._requiredKernelPackages.set(constants.sparkScalaDisplayName, sparkPackages);
-		this._requiredKernelPackages.set(constants.sparkRDisplayName, sparkPackages);
-
-		let allPackages = sparkPackages.concat(powershellPkg);
+		let allPackages = requiredSparkPackages.concat(requiredPowershellPkg);
 		this._requiredKernelPackages.set(constants.allKernelsName, allPackages);
 
 		this._requiredPackagesSet = new Set<string>();
@@ -160,7 +176,7 @@ export class JupyterServerInstallation implements IJupyterServerInstallation {
 		vscode.window.showInformationMessage(msgInstallPkgFinish);
 	}
 
-	public installPythonPackage(backgroundOperation: azdata.BackgroundOperation, usingExistingPython: boolean, pythonInstallationPath: string, outputChannel: vscode.OutputChannel): Promise<void> {
+	private installPythonPackage(backgroundOperation: azdata.BackgroundOperation, usingExistingPython: boolean, pythonInstallationPath: string, outputChannel: vscode.OutputChannel): Promise<void> {
 		if (usingExistingPython) {
 			return Promise.resolve();
 		}
@@ -288,6 +304,11 @@ export class JupyterServerInstallation implements IJupyterServerInstallation {
 	}
 
 	public async configurePackagePaths(): Promise<void> {
+		// Delete existing Python variables in ADS to prevent conflict with other installs
+		delete process.env['PYTHONPATH'];
+		delete process.env['PYTHONSTARTUP'];
+		delete process.env['PYTHONHOME'];
+
 		//Python source path up to bundle version
 		let pythonSourcePath = this._usingExistingPython
 			? this._pythonInstallationPath
@@ -328,11 +349,6 @@ export class JupyterServerInstallation implements IJupyterServerInstallation {
 				this.pythonEnvVarPath = pythonUserDir + delimiter + this.pythonEnvVarPath;
 			}
 		}
-
-		// Delete existing Python variables in ADS to prevent conflict with other installs
-		delete process.env['PYTHONPATH'];
-		delete process.env['PYTHONSTARTUP'];
-		delete process.env['PYTHONHOME'];
 
 		// Store the executable options to run child processes with env var without interfering parent env var.
 		let env = Object.assign({}, process.env);
@@ -375,9 +391,9 @@ export class JupyterServerInstallation implements IJupyterServerInstallation {
 		}
 
 		// Check if Python is running before attempting to overwrite the installation.
-		// This step is skipped when using an existing installation, since we only add
-		// extra packages in that case and don't modify the install itself.
-		if (!installSettings.existingPython) {
+		// This step is skipped when using an existing installation or when upgrading
+		// packages, since those cases wouldn't overwrite the installation.
+		if (!installSettings.existingPython && !installSettings.packageUpgradeOnly) {
 			let pythonExePath = JupyterServerInstallation.getPythonExePath(installSettings.installPath, false);
 			let isPythonRunning = await this.isPythonRunning(pythonExePath);
 			if (isPythonRunning) {
@@ -519,14 +535,17 @@ export class JupyterServerInstallation implements IJupyterServerInstallation {
 		}
 	}
 
-	public installPipPackages(packages: PythonPkgDetails[], useMinVersion: boolean): Promise<void> {
+	public installPipPackages(packages: PythonPkgDetails[], useMinVersionDefault: boolean): Promise<void> {
 		if (!packages || packages.length === 0) {
 			return Promise.resolve();
 		}
 
-		let versionSpecifier = useMinVersion ? '>=' : '==';
-		let packagesStr = packages.map(pkg => `"${pkg.name}${versionSpecifier}${pkg.version}"`).join(' ');
-		let cmd = `"${this.pythonExecutable}" -m pip install --user ${packagesStr} --extra-index-url https://prose-python-packages.azurewebsites.net`;
+		let versionSpecifierDefault = useMinVersionDefault ? '>=' : '==';
+		let packagesStr = packages.map(pkg => {
+			const pkgVersionSpecifier = pkg.installExactVersion ? '==' : versionSpecifierDefault;
+			return `"${pkg.name}${pkgVersionSpecifier}${pkg.version}"`;
+		}).join(' ');
+		let cmd = `"${this.pythonExecutable}" -m pip install --user ${packagesStr}`;
 		return this.executeStreamedCommand(cmd);
 	}
 
@@ -568,13 +587,16 @@ export class JupyterServerInstallation implements IJupyterServerInstallation {
 		}
 	}
 
-	public installCondaPackages(packages: PythonPkgDetails[], useMinVersion: boolean): Promise<void> {
+	public installCondaPackages(packages: PythonPkgDetails[], useMinVersionDefault: boolean): Promise<void> {
 		if (!packages || packages.length === 0) {
 			return Promise.resolve();
 		}
 
-		let versionSpecifier = useMinVersion ? '>=' : '==';
-		let packagesStr = packages.map(pkg => `"${pkg.name}${versionSpecifier}${pkg.version}"`).join(' ');
+		let versionSpecifierDefault = useMinVersionDefault ? '>=' : '==';
+		let packagesStr = packages.map(pkg => {
+			const pkgVersionSpecifier = pkg.installExactVersion ? '==' : versionSpecifierDefault;
+			return `"${pkg.name}${pkgVersionSpecifier}${pkg.version}"`;
+		}).join(' ');
 		let condaExe = this.getCondaExePath();
 		let cmd = `"${condaExe}" install -c conda-forge -y ${packagesStr}`;
 		return this.executeStreamedCommand(cmd);
@@ -709,12 +731,39 @@ export class JupyterServerInstallation implements IJupyterServerInstallation {
 	public getRequiredPackagesForKernel(kernelName: string): PythonPkgDetails[] {
 		return this._requiredKernelPackages.get(kernelName) ?? [];
 	}
+
+	public get runningOnSaw(): boolean {
+		return this._runningOnSAW;
+	}
+
+	public async updateKernelSpecPaths(kernelsFolder: string): Promise<void> {
+		if (!this._runningOnSAW) {
+			return;
+		}
+		let fileNames = await fs.readdir(kernelsFolder);
+		let filePaths = fileNames.map(name => path.join(kernelsFolder, name));
+		let fileStats = await Promise.all(filePaths.map(path => fs.stat(path)));
+		let folderPaths = filePaths.filter((value, index) => value && fileStats[index].isDirectory());
+		let kernelFiles = folderPaths.map(folder => path.join(folder, 'kernel.json'));
+		await Promise.all(kernelFiles.map(file => this.updateKernelSpecPath(file)));
+	}
+
+	private async updateKernelSpecPath(kernelPath: string): Promise<void> {
+		let fileContents = await fs.readFile(kernelPath);
+		let kernelSpec = <IKernelInfo>JSON.parse(fileContents.toString());
+		kernelSpec.argv = kernelSpec.argv?.map(arg => arg.replace('{ADS_PYTHONDIR}', this._pythonInstallationPath));
+		await fs.writeFile(kernelPath, JSON.stringify(kernelSpec, undefined, '\t'));
+	}
 }
 
 export interface PythonPkgDetails {
 	name: string;
 	version: string;
 	channel?: string;
+	/**
+	 * Whether to always install the exact version of the package (==)
+	 */
+	installExactVersion?: boolean
 }
 
 export interface PipPackageOverview {

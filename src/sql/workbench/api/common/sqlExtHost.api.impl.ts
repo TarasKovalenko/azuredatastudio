@@ -27,13 +27,14 @@ import { ExtHostNotebookDocumentsAndEditors } from 'sql/workbench/api/common/ext
 import { ExtHostExtensionManagement } from 'sql/workbench/api/common/extHostExtensionManagement';
 import { IExtensionDescription } from 'vs/platform/extensions/common/extensions';
 import * as extHostTypes from 'vs/workbench/api/common/extHostTypes';
-import { mssqlProviderName } from 'sql/platform/connection/common/constants';
 import { ServicesAccessor } from 'vs/platform/instantiation/common/instantiation';
 import { IURITransformerService } from 'vs/workbench/api/common/extHostUriTransformerService';
 import { IExtHostRpcService } from 'vs/workbench/api/common/extHostRpcService';
 import { ILogService } from 'vs/platform/log/common/log';
 import { IExtensionApiFactory as vsIApiFactory, createApiFactoryAndRegisterActors as vsApiFactory } from 'vs/workbench/api/common/extHost.api.impl';
 import { IExtHostCommands } from 'vs/workbench/api/common/extHostCommands';
+import { ExtHostWorkspace } from 'sql/workbench/api/common/extHostWorkspace';
+import { IExtHostInitDataService } from 'vs/workbench/api/common/extHostInitDataService';
 
 export interface IAzdataExtensionApiFactory {
 	(extension: IExtensionDescription): typeof azdata;
@@ -68,6 +69,7 @@ export interface IAdsExtensionApiFactory {
  * This method instantiates and returns the extension API surface
  */
 export function createAdsApiFactory(accessor: ServicesAccessor): IAdsExtensionApiFactory {
+	const initData = accessor.get(IExtHostInitDataService);
 	const uriTransformer = accessor.get(IURITransformerService);
 	const rpcProtocol = accessor.get(IExtHostRpcService);
 	const extHostLogService = accessor.get(ILogService);
@@ -93,6 +95,7 @@ export function createAdsApiFactory(accessor: ServicesAccessor): IAdsExtensionAp
 	const extHostNotebook = rpcProtocol.set(SqlExtHostContext.ExtHostNotebook, new ExtHostNotebook(rpcProtocol));
 	const extHostNotebookDocumentsAndEditors = rpcProtocol.set(SqlExtHostContext.ExtHostNotebookDocumentsAndEditors, new ExtHostNotebookDocumentsAndEditors(rpcProtocol));
 	const extHostExtensionManagement = rpcProtocol.set(SqlExtHostContext.ExtHostExtensionManagement, new ExtHostExtensionManagement(rpcProtocol));
+	const extHostWorkspace = rpcProtocol.set(SqlExtHostContext.ExtHostWorkspace, new ExtHostWorkspace(rpcProtocol));
 
 	return {
 		azdata: function (extension: IExtensionDescription): typeof azdata {
@@ -107,8 +110,8 @@ export function createAdsApiFactory(accessor: ServicesAccessor): IAdsExtensionAp
 				getConnections(activeConnectionsOnly?: boolean): Thenable<azdata.connection.ConnectionProfile[]> {
 					return extHostConnectionManagement.$getConnections(activeConnectionsOnly);
 				},
-				registerConnectionEventListener(listener: azdata.connection.ConnectionEventListener): void {
-					return extHostConnectionManagement.$registerConnectionEventListener(mssqlProviderName, listener);
+				registerConnectionEventListener(listener: azdata.connection.ConnectionEventListener): vscode.Disposable {
+					return extHostConnectionManagement.$registerConnectionEventListener(listener);
 				},
 				getConnection(uri: string): Thenable<azdata.connection.ConnectionProfile> {
 					return extHostConnectionManagement.$getConnection(uri);
@@ -138,7 +141,7 @@ export function createAdsApiFactory(accessor: ServicesAccessor): IAdsExtensionAp
 				},
 				connect(connectionProfile: azdata.IConnectionProfile, saveConnection: boolean, showDashboard: boolean): Thenable<azdata.ConnectionResult> {
 					return extHostConnectionManagement.$connect(connectionProfile, saveConnection, showDashboard);
-				}
+				},
 			};
 
 			// Backcompat "sqlops" APIs
@@ -434,14 +437,14 @@ export function createAdsApiFactory(accessor: ServicesAccessor): IAdsExtensionAp
 				closeDialog(dialog: azdata.window.Dialog) {
 					return extHostModelViewDialog.closeDialog(dialog);
 				},
-				createWizardPage(title: string): azdata.window.WizardPage {
-					return extHostModelViewDialog.createWizardPage(title, extension);
+				createWizardPage(title: string, pageName?: string): azdata.window.WizardPage {
+					return extHostModelViewDialog.createWizardPage(title, extension, pageName);
 				},
 				createWizard(title: string, name?: string, width?: azdata.window.DialogWidth): azdata.window.Wizard {
 					return extHostModelViewDialog.createWizard(title, name, width);
 				},
-				createModelViewDashboard(title: string, options?: azdata.ModelViewDashboardOptions): azdata.window.ModelViewDashboard {
-					return extHostModelViewDialog.createModelViewDashboard(title, options, extension);
+				createModelViewDashboard(title: string, name?: string, options?: azdata.ModelViewDashboardOptions): azdata.window.ModelViewDashboard {
+					return extHostModelViewDialog.createModelViewDashboard(title, name, options, extension);
 				},
 				MessageLevel: sqlExtHostTypes.MessageLevel
 			};
@@ -458,8 +461,14 @@ export function createAdsApiFactory(accessor: ServicesAccessor): IAdsExtensionAp
 			const workspace: typeof azdata.workspace = {
 				onDidOpenDashboard: extHostDashboard.onDidOpenDashboard,
 				onDidChangeToDashboard: extHostDashboard.onDidChangeToDashboard,
-				createModelViewEditor(title: string, options?: azdata.ModelViewEditorOptions): azdata.workspace.ModelViewEditor {
-					return extHostModelViewDialog.createModelViewEditor(title, extension, options);
+				createModelViewEditor(title: string, options?: azdata.ModelViewEditorOptions, name?: string): azdata.workspace.ModelViewEditor {
+					return extHostModelViewDialog.createModelViewEditor(title, extension, name, options);
+				},
+				createWorkspace(location: vscode.Uri, workspaceFile: vscode.Uri): Promise<void> {
+					return extHostWorkspace.$createWorkspace(location, workspaceFile);
+				},
+				enterWorkspace(workspaceFile: vscode.Uri): Promise<void> {
+					return extHostWorkspace.$enterWorkspace(workspaceFile);
 				}
 			};
 
@@ -485,8 +494,8 @@ export function createAdsApiFactory(accessor: ServicesAccessor): IAdsExtensionAp
 					extHostQueryEditor.$runQuery(fileUri, runCurrentQuery);
 				},
 
-				registerQueryEventListener(listener: azdata.queryeditor.QueryEventListener): void {
-					extHostQueryEditor.$registerQueryInfoListener(listener);
+				registerQueryEventListener(listener: azdata.queryeditor.QueryEventListener): extHostTypes.Disposable {
+					return extHostQueryEditor.$registerQueryInfoListener(listener);
 				},
 
 				getQueryDocument(fileUri: string): Thenable<azdata.queryeditor.QueryDocument> {
@@ -538,7 +547,9 @@ export function createAdsApiFactory(accessor: ServicesAccessor): IAdsExtensionAp
 			};
 
 			return {
+				version: initData.version,
 				accounts,
+				ButtonType: sqlExtHostTypes.ButtonType,
 				connection,
 				credentials,
 				objectexplorer: objectExplorer,

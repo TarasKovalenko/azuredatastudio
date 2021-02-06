@@ -19,11 +19,12 @@ import { IContextViewService } from 'vs/platform/contextview/browser/contextView
 import { IClipboardService } from 'vs/platform/clipboard/common/clipboardService';
 import { KeyCode } from 'vs/base/common/keyCodes';
 import { IComponent, IComponentDescriptor, IModelStore, ComponentEventType } from 'sql/platform/dashboard/browser/interfaces';
+import { ILogService } from 'vs/platform/log/common/log';
 
 @Component({
 	selector: 'modelview-listBox',
 	template: `
-		<div #input style="width: 100%"></div>
+		<div #input [ngStyle]="CSSStyles"></div>
 	`
 })
 export default class ListBoxComponent extends ComponentBase<azdata.ListBoxProperties> implements IComponent, OnDestroy, AfterViewInit {
@@ -38,13 +39,9 @@ export default class ListBoxComponent extends ComponentBase<azdata.ListBoxProper
 		@Inject(IContextViewService) private contextViewService: IContextViewService,
 		@Inject(IClipboardService) private clipboardService: IClipboardService,
 		@Inject(forwardRef(() => ElementRef)) el: ElementRef,
+		@Inject(ILogService) logService: ILogService
 	) {
-		super(changeRef, el);
-	}
-
-	ngOnInit(): void {
-		this.baseInit();
-
+		super(changeRef, el, logService);
 	}
 
 	ngAfterViewInit(): void {
@@ -80,12 +77,7 @@ export default class ListBoxComponent extends ComponentBase<azdata.ListBoxProper
 				});
 			}));
 		}
-	}
-
-	public validate(): Thenable<boolean> {
-		return super.validate().then(valid => {
-			return valid;
-		});
+		this.baseInit();
 	}
 
 	ngOnDestroy(): void {
@@ -101,8 +93,6 @@ export default class ListBoxComponent extends ComponentBase<azdata.ListBoxProper
 	public setProperties(properties: { [key: string]: any; }): void {
 		super.setProperties(properties);
 		this._input.setOptions(this.values.map(value => { return { text: value }; }), this.selectedRow);
-
-		this.validate();
 	}
 
 	// CSS-bound properties
@@ -121,5 +111,12 @@ export default class ListBoxComponent extends ComponentBase<azdata.ListBoxProper
 
 	private set selectedRow(newValue: number) {
 		this.setPropertyFromUI<number>((props, value) => props.selectedRow = value, newValue);
+	}
+
+
+	public get CSSStyles(): azdata.CssStyles {
+		return this.mergeCss(super.CSSStyles, {
+			'width': '100%'
+		});
 	}
 }

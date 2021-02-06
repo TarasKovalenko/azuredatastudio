@@ -7,6 +7,7 @@ import 'vs/css!./media/markdown';
 import 'vs/css!./media/highlight';
 
 import { OnInit, Component, Input, Inject, forwardRef, ElementRef, ChangeDetectorRef, ViewChild, OnChanges, SimpleChange, HostListener, ViewChildren, QueryList } from '@angular/core';
+import * as Mark from 'mark.js';
 
 import { localize } from 'vs/nls';
 import { IWorkbenchThemeService } from 'vs/workbench/services/themes/common/workbenchThemeService';
@@ -14,10 +15,11 @@ import * as themeColors from 'vs/workbench/common/theme';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
 import { Emitter } from 'vs/base/common/event';
 import { URI } from 'vs/base/common/uri';
-import * as DOM from 'vs/base/browser/dom';
-
+import { IColorTheme } from 'vs/platform/theme/common/themeService';
+import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
 import { toDisposable } from 'vs/base/common/lifecycle';
 import { IMarkdownRenderResult } from 'vs/editor/contrib/markdown/markdownRenderer';
+
 import { NotebookMarkdownRenderer } from 'sql/workbench/contrib/notebook/browser/outputs/notebookMarkdown';
 import { CellView } from 'sql/workbench/contrib/notebook/browser/cellViews/interfaces';
 import { ICellModel } from 'sql/workbench/services/notebook/browser/models/modelInterfaces';
@@ -25,16 +27,13 @@ import { NotebookModel } from 'sql/workbench/services/notebook/browser/models/no
 import { ISanitizer, defaultSanitizer } from 'sql/workbench/services/notebook/browser/outputs/sanitizer';
 import { CodeComponent } from 'sql/workbench/contrib/notebook/browser/cellViews/code.component';
 import { NotebookRange, ICellEditorProvider, INotebookService } from 'sql/workbench/services/notebook/browser/notebookService';
-import { IColorTheme } from 'vs/platform/theme/common/themeService';
-import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
-import * as turndownPluginGfm from '../turndownPluginGfm';
-import TurndownService = require('turndown');
-import * as Mark from 'mark.js';
+import { HTMLMarkdownConverter } from 'sql/workbench/contrib/notebook/browser/htmlMarkdownConverter';
 import { NotebookInput } from 'sql/workbench/contrib/notebook/browser/models/notebookInput';
 
 export const TEXT_SELECTOR: string = 'text-cell-component';
 const USER_SELECT_CLASS = 'actionselect';
-
+const findHighlightClass = 'rangeHighlight';
+const findRangeSpecificClass = 'rangeSpecificHighlight';
 @Component({
 	selector: TEXT_SELECTOR,
 	templateUrl: decodeURI(require.toUrl('./textCell.component.html'))
@@ -68,16 +67,20 @@ export class TextCellComponent extends CellView implements OnInit, OnChanges {
 	}
 
 	@HostListener('document:keydown', ['$event'])
-	onkeydown(e) {
-		// use preventDefault() to avoid invoking the editor's select all
-		// select the active .
-		if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
-			e.preventDefault();
-			document.execCommand('selectAll');
-		}
-		if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
-			e.preventDefault();
-			document.execCommand('undo');
+	onkeydown(e: KeyboardEvent) {
+		if (this.isActive()) {
+			// select the active .
+			if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
+				preventDefaultAndExecCommand(e, 'selectAll');
+			} else if ((e.metaKey && e.shiftKey && e.key === 'z') || (e.ctrlKey && e.key === 'y') && !this.markdownMode) {
+				preventDefaultAndExecCommand(e, 'redo');
+			} else if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+				preventDefaultAndExecCommand(e, 'undo');
+			} else if (e.shiftKey && e.key === 'Tab') {
+				preventDefaultAndExecCommand(e, 'outdent');
+			} else if (e.key === 'Tab') {
+				preventDefaultAndExecCommand(e, 'indent');
+			}
 		}
 	}
 
@@ -90,11 +93,12 @@ export class TextCellComponent extends CellView implements OnInit, OnChanges {
 	private _model: NotebookModel;
 	private _activeCellId: string;
 	private readonly _onDidClickLink = this._register(new Emitter<URI>());
-	public readonly onDidClickLink = this._onDidClickLink.event;
 	private markdownRenderer: NotebookMarkdownRenderer;
 	private markdownResult: IMarkdownRenderResult;
+	private _htmlMarkdownConverter: HTMLMarkdownConverter;
+	private markdownPreviewLineHeight: number;
+	public readonly onDidClickLink = this._onDidClickLink.event;
 	public previewFeaturesEnabled: boolean = false;
-	private turndownService;
 	public doubleClickEditEnabled: boolean;
 
 	constructor(
@@ -103,12 +107,11 @@ export class TextCellComponent extends CellView implements OnInit, OnChanges {
 		@Inject(IWorkbenchThemeService) private themeService: IWorkbenchThemeService,
 		@Inject(IConfigurationService) private _configurationService: IConfigurationService,
 		@Inject(INotebookService) private _notebookService: INotebookService,
-
 	) {
 		super();
-		this.setTurndownOptions();
 		this.markdownRenderer = this._instantiationService.createInstance(NotebookMarkdownRenderer);
 		this.doubleClickEditEnabled = this._configurationService.getValue('notebook.enableDoubleClickEdit');
+		this.markdownPreviewLineHeight = this._configurationService.getValue('notebook.markdownPreviewLineHeight');
 		this._register(toDisposable(() => {
 			if (this.markdownResult) {
 				this.markdownResult.dispose();
@@ -116,9 +119,11 @@ export class TextCellComponent extends CellView implements OnInit, OnChanges {
 		}));
 		this._register(this._configurationService.onDidChangeConfiguration(e => {
 			this.previewFeaturesEnabled = this._configurationService.getValue('workbench.enablePreviewFeatures');
-		}));
-		this._register(this._configurationService.onDidChangeConfiguration(e => {
 			this.doubleClickEditEnabled = this._configurationService.getValue('notebook.enableDoubleClickEdit');
+			if (e.affectsConfiguration('notebook.markdownPreviewLineHeight')) {
+				this.markdownPreviewLineHeight = this._configurationService.getValue('notebook.markdownPreviewLineHeight');
+				this.updatePreview();
+			}
 		}));
 	}
 
@@ -157,6 +162,7 @@ export class TextCellComponent extends CellView implements OnInit, OnChanges {
 		this.updateTheme(this.themeService.getColorTheme());
 		this.setFocusAndScroll();
 		this.cellModel.isEditMode = false;
+		this._htmlMarkdownConverter = new HTMLMarkdownConverter(this.notebookUri);
 		this._register(this.cellModel.onOutputsChanged(e => {
 			this.updatePreview();
 		}));
@@ -223,7 +229,7 @@ export class TextCellComponent extends CellView implements OnInit, OnChanges {
 					this._content = localize('addContent', "<i>Add content here...</i>");
 				}
 			} else {
-				this._content = this.cellModel.source[0] === '' ? '<p>&nbsp;</p>' : this.cellModel.source;
+				this._content = this.cellModel.source;
 			}
 			this.markdownRenderer.setNotebookURI(this.cellModel.notebookModel.notebookUri);
 			this.markdownResult = this.markdownRenderer.render({
@@ -235,6 +241,7 @@ export class TextCellComponent extends CellView implements OnInit, OnChanges {
 			if (this._previewMode) {
 				let outputElement = <HTMLElement>this.output.nativeElement;
 				outputElement.innerHTML = this.markdownResult.element.innerHTML;
+				outputElement.style.lineHeight = this.markdownPreviewLineHeight.toString();
 				this.cellModel.renderedOutputTextContent = this.getRenderedTextOutput();
 				outputElement.focus();
 			}
@@ -243,7 +250,7 @@ export class TextCellComponent extends CellView implements OnInit, OnChanges {
 
 	private updateCellSource(): void {
 		let textOutputElement = <HTMLElement>this.output.nativeElement;
-		let newCellSource: string = this.turndownService.turndown(textOutputElement.innerHTML, { gfm: true });
+		let newCellSource: string = this._htmlMarkdownConverter.convert(textOutputElement.innerHTML);
 		this.cellModel.source = newCellSource;
 		this._changeRef.detectChanges();
 	}
@@ -314,9 +321,9 @@ export class TextCellComponent extends CellView implements OnInit, OnChanges {
 			return;
 		}
 		if (userSelect) {
-			DOM.addClass(this.output.nativeElement, USER_SELECT_CLASS);
+			this.output.nativeElement.classList.add(USER_SELECT_CLASS);
 		} else {
-			DOM.removeClass(this.output.nativeElement, USER_SELECT_CLASS);
+			this.output.nativeElement.classList.remove(USER_SELECT_CLASS);
 		}
 	}
 
@@ -354,31 +361,41 @@ export class TextCellComponent extends CellView implements OnInit, OnChanges {
 
 	private addDecoration(range: NotebookRange): void {
 		if (range && this.output && this.output.nativeElement) {
+			let markAllOccurances = new Mark(this.output.nativeElement); // to highlight all occurances in the element.
 			let elements = this.getHtmlElements();
 			if (elements?.length >= range.startLineNumber) {
 				let elementContainingText = elements[range.startLineNumber - 1];
-				let mark = new Mark(elementContainingText);
+				let markCurrent = new Mark(elementContainingText); // to highlight the current item of them all.
 				let editor = this._notebookService.findNotebookEditor(this.model.notebookUri);
 				if (editor) {
 					let findModel = (editor.notebookParams.input as NotebookInput).notebookFindModel;
 					if (findModel?.findMatches?.length > 0) {
 						let searchString = findModel.findExpression;
-						mark.mark(searchString, {
-							className: 'rangeHighlight'
+						markAllOccurances.mark(searchString, {
+							className: findHighlightClass
 						});
 						elementContainingText.scrollIntoView({ behavior: 'smooth' });
 					}
 				}
+				markCurrent.markRanges([{
+					start: range.startColumn - 1, //subtracting 1 since markdown html is 0 indexed.
+					length: range.endColumn - range.startColumn
+				}], {
+					className: findRangeSpecificClass
+				});
+				elementContainingText.scrollIntoView({ behavior: 'smooth' });
 			}
 		}
 	}
 
 	private removeDecoration(range: NotebookRange): void {
 		if (range && this.output && this.output.nativeElement) {
+			let markAllOccurances = new Mark(this.output.nativeElement);
 			let elements = this.getHtmlElements();
 			let elementContainingText = elements[range.startLineNumber - 1];
-			let mark = new Mark(elementContainingText);
-			mark.unmark({ acrossElements: true, className: 'rangeHighlight' });
+			let markCurrent = new Mark(elementContainingText);
+			markAllOccurances.unmark({ acrossElements: true, className: findHighlightClass });
+			markCurrent.unmark({ acrossElements: true, className: findRangeSpecificClass });
 		}
 	}
 
@@ -423,47 +440,13 @@ export class TextCellComponent extends CellView implements OnInit, OnChanges {
 		let textOutput: string[] = [];
 		let elements = this.getHtmlElements();
 		elements.forEach(element => {
-			if (element && element.innerText) {
-				textOutput.push(element.innerText);
+			if (element && element.textContent) {
+				textOutput.push(element.textContent);
 			} else {
 				textOutput.push('');
 			}
 		});
 		return textOutput;
-	}
-
-	private setTurndownOptions() {
-		this.turndownService = new TurndownService({ 'emDelimiter': '_', 'bulletListMarker': '-', 'headingStyle': 'atx' });
-		this.turndownService.keep(['u', 'mark']);
-		this.turndownService.use(turndownPluginGfm.gfm);
-		this.turndownService.addRule('pre', {
-			filter: 'pre',
-			replacement: function (content, node) {
-				return '\n```\n' + node.textContent + '\n```\n';
-			}
-		});
-		this.turndownService.addRule('caption', {
-			filter: 'caption',
-			replacement: function (content, node) {
-				return `${node.outerHTML}
-				`;
-			}
-		});
-		this.turndownService.addRule('span', {
-			filter: function (node, options) {
-				return (
-					node.nodeName === 'MARK' ||
-					(node.nodeName === 'SPAN' &&
-						node.getAttribute('style') === 'background-color: yellow;')
-				);
-			},
-			replacement: function (content, node) {
-				if (node.nodeName === 'SPAN') {
-					return '<mark>' + node.textContent + '</mark>';
-				}
-				return node.textContent;
-			}
-		});
 	}
 
 	// Enables edit mode on double clicking active cell
@@ -474,4 +457,10 @@ export class TextCellComponent extends CellView implements OnInit, OnChanges {
 		this.cellModel.active = true;
 		this._model.updateActiveCell(this.cellModel);
 	}
+}
+
+function preventDefaultAndExecCommand(e: KeyboardEvent, commandId: string) {
+	// use preventDefault() to avoid invoking the editor's select all
+	e.preventDefault();
+	document.execCommand(commandId);
 }

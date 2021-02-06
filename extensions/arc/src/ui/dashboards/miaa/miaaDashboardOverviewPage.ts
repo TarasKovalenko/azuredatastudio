@@ -8,7 +8,7 @@ import * as azdataExt from 'azdata-ext';
 import * as azurecore from 'azurecore';
 import * as vscode from 'vscode';
 import { getDatabaseStateDisplayText, promptForInstanceDeletion } from '../../../common/utils';
-import { cssStyles, Endpoints, IconPathHelper, miaaTroubleshootDocsUrl } from '../../../constants';
+import { cssStyles, IconPathHelper, miaaTroubleshootDocsUrl } from '../../../constants';
 import * as loc from '../../../localizedConstants';
 import { ControllerModel } from '../../../models/controllerModel';
 import { MiaaModel } from '../../../models/miaaModel';
@@ -205,8 +205,14 @@ export class MiaaDashboardOverviewPage extends DashboardPage {
 								title: loc.deletingInstance(this._miaaModel.info.name),
 								cancellable: false
 							},
-							(_progress, _token) => {
-								return this._azdataApi.azdata.arc.sql.mi.delete(this._miaaModel.info.name);
+							async (_progress, _token) => {
+								const session = await this._controllerModel.acquireAzdataSession();
+								try {
+									return await this._azdataApi.azdata.arc.sql.mi.delete(this._miaaModel.info.name, this._controllerModel.azdataAdditionalEnvVars, session);
+								} finally {
+									session.dispose();
+								}
+
 							}
 						);
 						await this._controllerModel.refreshTreeNode();
@@ -251,7 +257,7 @@ export class MiaaDashboardOverviewPage extends DashboardPage {
 				const config = this._controllerModel.controllerConfig;
 				if (config) {
 					vscode.env.openExternal(vscode.Uri.parse(
-						`https://portal.azure.com/#resource/subscriptions/${config.spec.settings.azure.subscription}/resourceGroups/${config.spec.settings.azure.resourceGroup}/providers/Microsoft.AzureData/${ResourceType.sqlManagedInstances}/${this._miaaModel.info.name}`));
+						`https://portal.azure.com/#resource/subscriptions/${config.spec.settings.azure.subscription}/resourceGroups/${config.spec.settings.azure.resourceGroup}/providers/Microsoft.AzureArcData/${ResourceType.sqlManagedInstances}/${this._miaaModel.info.name}`));
 				} else {
 					vscode.window.showErrorMessage(loc.couldNotFindControllerRegistration);
 				}
@@ -352,19 +358,13 @@ export class MiaaDashboardOverviewPage extends DashboardPage {
 	}
 
 	private refreshDashboardLinks(): void {
-		const kibanaEndpoint = this._controllerModel.getEndpoint(Endpoints.logsui);
-		if (kibanaEndpoint && this._miaaModel.config) {
-			const kibanaQuery = `kubernetes_namespace:"${this._miaaModel.config.metadata.namespace}" and custom_resource_name :"${this._miaaModel.config.metadata.name}"`;
-			const kibanaUrl = `${kibanaEndpoint.endpoint}/app/kibana#/discover?_a=(query:(language:kuery,query:'${kibanaQuery}'))`;
+		if (this._miaaModel.config) {
+			const kibanaUrl = this._miaaModel.config.status.logSearchDashboard ?? '';
 			this._kibanaLink.label = kibanaUrl;
 			this._kibanaLink.url = kibanaUrl;
 			this._kibanaLoading!.loading = false;
-		}
 
-		const grafanaEndpoint = this._controllerModel.getEndpoint(Endpoints.metricsui);
-		if (grafanaEndpoint && this._miaaModel.config) {
-			const grafanaQuery = `var-hostname=${this._miaaModel.info.name}-0`;
-			const grafanaUrl = grafanaEndpoint ? `${grafanaEndpoint.endpoint}/d/40q72HnGk/sql-managed-instance-metrics?${grafanaQuery}` : '';
+			const grafanaUrl = this._miaaModel.config.status.metricsDashboard ?? '';
 			this._grafanaLink.label = grafanaUrl;
 			this._grafanaLink.url = grafanaUrl;
 			this._grafanaLoading!.loading = false;
